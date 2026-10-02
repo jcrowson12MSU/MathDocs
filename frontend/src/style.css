@@ -145,6 +145,8 @@ math-field:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var
   font-size: 24px; padding: 4px 0; min-height: 40px;
   border: none !important; box-shadow: none !important; background: transparent;
 }
+/* With an operation underneath, keep it close to the expression. */
+.step-box:has(> .work-row:not([hidden])) > math-field { padding-bottom: 0; min-height: 0; }
 .cell.math .gutter { padding-top: 22px; }
 .cell.math:not(.can-work) .work-btn { display: none; }
 math-field::part(menu-toggle) { display: none; }
@@ -260,12 +262,13 @@ table.help td { padding: 4px 10px 4px 0; vertical-align: top; }
 .toast .link { color: var(--accent-soft); }
 
 /* ---------- work under a step ---------- */
-.work-row { position: relative; height: 44px; }
+/* Height is set from the tallest copy in workrow.ts, so fractions fit inside the box. */
+.work-row { position: relative; height: 36px; margin-top: -5px; }
 .work-row[hidden] { display: none; }
 /* Same font and size as the expression above, in red; centered under a term. */
 math-field.work-copy {
   position: absolute; top: 0; transform: translateX(-50%);
-  display: inline-block; width: auto; min-width: 26px; padding: 4px 2px; font-size: 24px;
+  display: inline-block; width: auto; min-width: 26px; padding: 0 2px; font-size: 24px;
   color: var(--work); background: transparent; box-shadow: none !important;
   border: 1px dashed transparent; border-radius: 6px; cursor: grab;
   --caret-color: var(--work);

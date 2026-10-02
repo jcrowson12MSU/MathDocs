@@ -218,6 +218,10 @@ export class WorkRow {
       const col = this.cols[this.anchor(copy.side)];
       if (col) copy.mf.style.left = `${(col.left + col.right) / 2}px`;
     }
+    // The copies are positioned freely, so the row doesn't grow with them on its own:
+    // make it as tall as the tallest copy (a fraction is taller than −5).
+    const tallest = Math.max(...this.copies.map((c) => c.mf.offsetHeight));
+    if (tallest > 0) this.el.style.height = `${tallest}px`;
   }
 
   private makeCopy(side: Side): Copy {
