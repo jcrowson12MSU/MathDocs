@@ -12,6 +12,14 @@ import { GraphPanel } from './graphs';
 
 export type Mode = { kind: 'file'; name: string } | { kind: 'scratch' } | { kind: 'shared' };
 
+/**
+ * Comment shortcut: ⌘/ or Ctrl+/, plus Option+/ (Alt+/) because Safari keeps ⌘/ for
+ * its own "Show Status Bar" menu item. Matched by physical key, since Option+/ types ÷ on a Mac.
+ */
+function isCommentShortcut(e: KeyboardEvent): boolean {
+  return (e.metaKey || e.ctrlKey || e.altKey) && !e.shiftKey && (e.code === 'Slash' || e.key === '/');
+}
+
 /** Address of the locally running app, used by the hosted viewer's "open in my app" button. */
 const LOCAL_APP = 'http://127.0.0.1:8642/';
 
@@ -43,6 +51,16 @@ export class NotebookView {
   private failed = false;
   private save = debounce(() => this.saveNow(), 700);
   private lastMathfield: MathfieldElement | null = null;
+  /** The cell you were last in, so the comment shortcut works even after clicking elsewhere. */
+  private lastCellId: string | null = null;
+  private onPageKey = (e: KeyboardEvent) => {
+    if (e.defaultPrevented || !isCommentShortcut(e)) return;
+    if ((e.target as HTMLElement | null)?.closest?.('.cell, dialog, input, textarea')) return;
+    const id = this.lastCellId ?? this.nb.cells[0]?.id;
+    if (!id) return;
+    e.preventDefault();
+    this.views.get(id)?.setCommentsOpen(true);
+  };
   private onUnload = () => {
     if (this.save.pending()) {
       this.save.flush();
@@ -55,6 +73,7 @@ export class NotebookView {
     this.graphs = new GraphPanel(nb, { readOnly: this.readOnly, onChange: () => this.changed() });
     this.render();
     window.addEventListener('beforeunload', this.onUnload);
+    window.addEventListener('keydown', this.onPageKey);
     window.addEventListener('pagehide', this.onUnload);
   }
 
@@ -235,7 +254,7 @@ export class NotebookView {
       this.insertCell(this.index(cell.id) + 1, textCell());
       return true;
     }
-    if ((e.metaKey || e.ctrlKey) && e.key === '/') {
+    if (isCommentShortcut(e)) {
       this.views.get(cell.id)?.setCommentsOpen(true);
       return true;
     }
@@ -247,6 +266,7 @@ export class NotebookView {
     const commentsEl = h('div', { class: 'comments' });
     const commentBtn = h('button', { class: 'icon comment-btn', title: 'Comments' });
     const el = h('div', { class: `cell ${cell.type}`, 'data-id': cell.id });
+    el.addEventListener('focusin', () => (this.lastCellId = cell.id));
 
     const content: CellEditor = cell.type === 'math' ? this.mathEditor(cell, el) : this.textEditor(cell, el);
 
@@ -447,6 +467,10 @@ export class NotebookView {
       area.focus();
     });
     view.addEventListener('keydown', (e) => {
+      if (this.cellKeys(e, cell)) {
+        e.preventDefault();
+        return;
+      }
       const i = this.index(cell.id);
       if (e.key === 'Enter') {
         e.preventDefault();
@@ -532,7 +556,7 @@ export class NotebookView {
       if (e.key === 'Enter' && (e.metaKey || e.ctrlKey || !e.shiftKey)) {
         e.preventDefault();
         submit();
-      } else if (e.key === 'Escape' || ((e.metaKey || e.ctrlKey) && e.key === '/')) {
+      } else if (e.key === 'Escape' || isCommentShortcut(e)) {
         e.preventDefault();
         close();
       }
@@ -680,6 +704,7 @@ export class NotebookView {
 
   async destroy(): Promise<void> {
     window.removeEventListener('beforeunload', this.onUnload);
+    window.removeEventListener('keydown', this.onPageKey);
     window.removeEventListener('pagehide', this.onUnload);
     await this.flush();
     this.graphs.destroy();
@@ -696,7 +721,7 @@ export function showHelp(): void {
     ['Backspace on an empty step', 'Delete it'],
     ['Alt + Enter', 'Add a text cell below'],
     ['Alt + ↑ / ↓', 'Move this cell up or down'],
-    ['⌘ + /  (Ctrl + / on Windows)', 'Comment on this step; again or Esc to close'],
+    ['⌘ + /  or  Option + /', 'Comment on this step; again or Esc to close (use Option + / in Safari)'],
     ['/', 'Fraction (type 1/2, or select x+1 then /)'],
     ['^  and  _', 'Exponent and subscript; → to leave'],
     ['sqrt, pi, theta, int, lim, sum', 'Type the word to get the symbol'],

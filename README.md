@@ -47,7 +47,7 @@ Each step is a live math editor ([MathLive](https://mathlive.io)). Type the way 
 | **Backspace** on an empty step | delete it |
 | **Alt+Enter** | add a text cell below |
 | **Alt+↑ / ↓** | move a cell up or down |
-| **⌘ /** (Ctrl+/ on Windows) | comment on this step. Press it again or Esc to go back to the step |
+| **⌘ /** or **Option /** (Ctrl+/ or Alt+/ on Windows) | comment on this step. Press it again or Esc to go back to the step. **In Safari use Option /**, because Safari keeps ⌘ / for View → Show Status Bar |
 | **Esc** | finish editing a text cell |
 
 Text cells use Markdown with `$inline math$` and `$$display math$$`.
@@ -56,7 +56,7 @@ Click **⌨︎ Keyboard** for an on-screen math keyboard.
 
 ## Comments
 
-Click 💬 next to any step or text cell, or press **⌘ /**, to leave a comment. You enter your name the first time,
+Click 💬 next to any step or text cell, or press **⌘ /** (**Option /** in Safari), to leave a comment. You enter your name the first time,
 and it's saved in the browser. Comments are stored in the notebook file.
 
 ## Graphs
