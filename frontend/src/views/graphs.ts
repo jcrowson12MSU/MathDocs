@@ -5,8 +5,8 @@ import katex from 'katex';
 import { MathfieldElement } from 'mathlive';
 import { analyze, derivative, integrate, variableLatex, type Plottable } from '../mathfn';
 import {
-  COLORS, DEFAULT_BBOX, exprItem, newGraph, nextColor, parseNumber, tableItem,
-  type ExprItem, type Graph, type Notebook, type TableItem,
+  COLORS, DEFAULT_BBOX, exprItem, newGraph, nextColor, noteItem, parseNumber, tableItem,
+  type ExprItem, type Graph, type GraphItem, type NoteItem, type Notebook, type TableItem,
 } from '../model';
 import { debounce, h } from '../ui';
 
@@ -90,9 +90,26 @@ class GraphCard {
     this.opts.onChange();
   }, 400);
 
+  private xAxisLabel = h('div', { class: 'axis-label x' });
+  private yAxisLabel = h('div', { class: 'axis-label y' });
+
   constructor(private graph: Graph, private opts: PanelOptions, onDelete: () => void) {
     this.boardDiv = h('div', { class: 'board', id: `board-${graph.id}-${Math.random().toString(36).slice(2)}` });
     const ro = opts.readOnly;
+    const axisInput = (axis: 'x' | 'y') => {
+      const key = axis === 'x' ? 'xLabel' : 'yLabel';
+      const input = h('input', {
+        class: 'axis-input', value: graph[key] ?? '',
+        placeholder: axis === 'x' ? 'e.g. time (hours)' : 'e.g. height (cm)',
+      });
+      input.addEventListener('input', () => {
+        graph[key] = input.value || undefined;
+        this.showAxisLabels();
+        opts.onChange();
+      });
+      return h('label', { class: 'axis-field' }, h('span', {}, `${axis}-axis`), input);
+    };
+    this.showAxisLabels();
     this.el = h('section', { class: 'graph-card' },
       h('div', { class: 'graph-head' },
         ro
@@ -107,11 +124,13 @@ class GraphCard {
         h('button', { class: 'icon', title: 'Reset view', onclick: () => this.resetView() }, '⟲'),
         ro ? null : h('button', { class: 'icon', title: 'Delete graph', onclick: onDelete }, '✕'),
       ),
-      this.boardDiv,
+      h('div', { class: 'board-wrap' }, this.yAxisLabel, h('div', { class: 'board-col' }, this.boardDiv, this.xAxisLabel)),
+      ro ? null : h('div', { class: 'axis-fields' }, axisInput('x'), axisInput('y')),
       this.itemsEl,
       ro ? null : h('div', { class: 'graph-add' },
         h('button', { class: 'btn small', onclick: () => this.addItem(exprItem('', nextColor(graph))) }, '+ Expression'),
         h('button', { class: 'btn small', onclick: () => this.addItem(tableItem(nextColor(graph))) }, '+ Table of points'),
+        h('button', { class: 'btn small', title: 'A text note you can drag anywhere on the graph', onclick: () => this.addNote() }, '+ Note'),
       ),
     );
     this.renderItems();
@@ -123,6 +142,16 @@ class GraphCard {
       }
     });
     this.resizeObserver.observe(this.boardDiv);
+  }
+
+  private showAxisLabels(): void {
+    this.xAxisLabel.textContent = this.graph.xLabel ?? '';
+    this.yAxisLabel.textContent = this.graph.yLabel ?? '';
+  }
+
+  private addNote(): void {
+    const [x1, y1, x2, y2] = this.board?.getBoundingBox() ?? this.graph.bbox;
+    this.addItem(noteItem([round((x1 + x2) / 2), round((y1 + y2) / 2)]));
   }
 
   private analysis(item: ExprItem): Plottable {
@@ -139,7 +168,7 @@ class GraphCard {
     if (rebuild) this.rebuildSoon();
   }
 
-  private addItem(item: ExprItem | TableItem): void {
+  private addItem(item: GraphItem): void {
     this.graph.items.push(item);
     this.renderItems();
     this.changed();
@@ -147,7 +176,7 @@ class GraphCard {
     mf?.focus();
   }
 
-  private removeItem(item: ExprItem | TableItem): void {
+  private removeItem(item: GraphItem): void {
     this.graph.items = this.graph.items.filter((i) => i !== item);
     for (const i of this.graph.items) if (i.kind === 'table' && i.fromItem === item.id) i.fromItem = null;
     this.renderItems();
@@ -164,11 +193,13 @@ class GraphCard {
 
   private renderItems(): void {
     this.itemsEl.replaceChildren(
-      ...this.graph.items.map((item) => (item.kind === 'expr' ? this.exprRow(item) : this.tableRow(item))),
+      ...this.graph.items.map((item) =>
+        item.kind === 'expr' ? this.exprRow(item) : item.kind === 'table' ? this.tableRow(item) : this.noteRow(item),
+      ),
     );
   }
 
-  private commonButtons(item: ExprItem | TableItem): HTMLElement[] {
+  private commonButtons(item: GraphItem): HTMLElement[] {
     const swatch = h('button', {
       class: 'swatch', title: 'Change color / show or hide',
       style: `--c:${item.color}`,
@@ -232,8 +263,33 @@ class GraphCard {
     const [swatch, ...buttons] = this.commonButtons(item);
     return h('div', { class: 'graph-item', 'data-item': item.id },
       h('div', { class: 'item-line' }, swatch, mf, ...buttons),
-      msg, params, tools,
+      msg, params, tools, this.labelInput(item, 'Label this line, e.g. Candle 1'),
     );
+  }
+
+  /** What an expression or table represents; drawn on the graph where you drag it. */
+  private labelInput(item: ExprItem | TableItem, placeholder: string): HTMLElement | null {
+    if (this.opts.readOnly) return null;
+    const input = h('input', { class: 'item-label-input', value: item.label ?? '', placeholder });
+    input.addEventListener('input', () => {
+      item.label = input.value || undefined;
+      this.changed();
+    });
+    return input;
+  }
+
+  private noteRow(item: NoteItem): HTMLElement {
+    const [swatch, ...buttons] = this.commonButtons(item);
+    const text = this.opts.readOnly
+      ? h('span', { class: 'item-label' }, item.text)
+      : h('input', { class: 'note-input', value: item.text, placeholder: 'Note text — drag it on the graph' });
+    if (text instanceof HTMLInputElement) {
+      text.addEventListener('input', () => {
+        item.text = text.value;
+        this.changed();
+      });
+    }
+    return h('div', { class: 'graph-item', 'data-item': item.id }, h('div', { class: 'item-line' }, swatch, h('span', { class: 'note-tag' }, 'Note'), text, ...buttons));
   }
 
   private toggle(label: string, on: boolean, set: (on: boolean) => void): HTMLElement {
@@ -279,10 +335,14 @@ class GraphCard {
       const f = source();
       body.replaceChildren(
         ...item.rows.map((row, r) => {
-          const cell = (c: 0 | 1) => {
+          const cell = (c: 0 | 1 | 2) => {
             if (c === 1 && f) return h('td', { class: 'computed' }, fmt(f(parseNumber(row[0]))));
-            const input = h('input', { value: row[c], disabled: ro, inputmode: 'decimal' });
+            const input = h('input', {
+              value: row[c] ?? '', disabled: ro,
+              ...(c === 2 ? { class: 'point-label', placeholder: 'label' } : { inputmode: 'decimal' }),
+            });
             input.addEventListener('input', () => {
+              while (row.length <= c) row.push('');
               row[c] = input.value;
               if (c === 0 && f) renderRows();
               this.changed();
@@ -296,7 +356,7 @@ class GraphCard {
             });
             return h('td', {}, input);
           };
-          return h('tr', {}, cell(0), cell(1),
+          return h('tr', {}, cell(0), cell(1), cell(2),
             ro ? null : h('td', {}, h('button', {
               class: 'icon tiny', title: 'Remove row',
               onclick: () => {
@@ -324,7 +384,8 @@ class GraphCard {
     const [swatch, ...buttons] = this.commonButtons(item);
     return h('div', { class: 'graph-item', 'data-item': item.id },
       h('div', { class: 'item-line' }, swatch, h('span', { class: 'item-label' }, 'Table of points'), ...buttons),
-      h('table', { class: 'points' }, h('thead', {}, h('tr', {}, h('th', {}, 'x'), h('th', {}, 'y'), ro ? null : h('th'))), body),
+      h('table', { class: 'points' }, h('thead', {}, h('tr', {}, h('th', {}, 'x'), h('th', {}, 'y'), h('th', { class: 'label-head' }, 'label'), ro ? null : h('th'))), body),
+      this.labelInput(item, 'Label these points, e.g. Candle 2 measurements'),
       ro ? null : h('div', { class: 'table-opts' },
         h('button', {
           class: 'btn small',
@@ -360,7 +421,8 @@ class GraphCard {
     for (const item of this.graph.items) {
       if (item.hidden) continue;
       if (item.kind === 'expr') this.drawExpr(board, item, syncers);
-      else this.drawTable(board, item);
+      else if (item.kind === 'table') this.drawTable(board, item, syncers);
+      else this.drawNote(board, item, syncers);
     }
 
     board.on('boundingbox', () => this.saveBbox());
@@ -369,20 +431,63 @@ class GraphCard {
     });
   }
 
+  /** A draggable text on the board; its position is saved with `save`. */
+  private draggableText(board: any, text: string, pos: [number, number], color: string, syncers: (() => boolean)[],
+    save: (p: [number, number]) => void, current: () => [number, number] | null | undefined, bold = true): void {
+    const t = board.create('text', [pos[0], pos[1], text], {
+      fixed: this.opts.readOnly, strokeColor: color, fontSize: 14, highlight: false, dragArea: 'all',
+      cssStyle: `${bold ? 'font-weight:600;' : ''}background:rgba(255,255,255,0.75);padding:0 3px;border-radius:3px;`,
+    });
+    syncers.push(() => {
+      const p: [number, number] = [round(t.X()), round(t.Y())];
+      const was = current();
+      if (was && was[0] === p[0] && was[1] === p[1]) return false;
+      if (!was && p[0] === round(pos[0]) && p[1] === round(pos[1])) return false;
+      save(p);
+      return true;
+    });
+  }
+
+  /** A spot on a curve that is inside the current view, for its first label position. */
+  private spotOnCurve(board: any, f: (x: number) => number): [number, number] {
+    const [x1, y1, x2, y2] = board.getBoundingBox();
+    for (const t of [0.7, 0.55, 0.85, 0.4, 0.25, 0.1]) {
+      const x = x1 + (x2 - x1) * t;
+      const y = f(x);
+      if (Number.isFinite(y) && y < y1 - (y1 - y2) * 0.08 && y > y2 + (y1 - y2) * 0.08) return [x + (x2 - x1) * 0.02, y];
+    }
+    return [x1 + (x2 - x1) * 0.6, y1 - (y1 - y2) * 0.1];
+  }
+
+  private drawItemLabel(board: any, item: ExprItem | TableItem, fallback: () => [number, number], syncers: (() => boolean)[]): void {
+    if (!item.label?.trim()) return;
+    this.draggableText(board, item.label, item.labelPos ?? fallback(), item.color, syncers,
+      (p) => (item.labelPos = p), () => item.labelPos);
+  }
+
+  private drawNote(board: any, item: NoteItem, syncers: (() => boolean)[]): void {
+    if (!item.text.trim()) return;
+    this.draggableText(board, item.text, item.pos, item.color, syncers, (p) => (item.pos = p), () => item.pos, false);
+  }
+
   private drawExpr(board: any, item: ExprItem, syncers: (() => boolean)[]): void {
     const a = this.analysis(item);
     const color = item.color;
+    const [x1, y1, x2, y2] = board.getBoundingBox();
     if (a.kind === 'vertical') {
       board.create('line', [[a.x, 0], [a.x, 1]], { strokeColor: color, strokeWidth: 2.5, fixed: true, highlight: false });
+      this.drawItemLabel(board, item, () => [a.x + (x2 - x1) * 0.02, y1 - (y1 - y2) * 0.12], syncers);
       return;
     }
     if (a.kind === 'implicit') {
       board.create('implicitcurve', [(x: number, y: number) => a.f(x, y, item.params ?? {})], { strokeColor: color, strokeWidth: 2.5 });
+      this.drawItemLabel(board, item, () => [x1 + (x2 - x1) * 0.6, y1 - (y1 - y2) * 0.12], syncers);
       return;
     }
     if (a.kind !== 'function') return;
 
     const f = (x: number) => a.f(x, item.params ?? {});
+    this.drawItemLabel(board, item, () => this.spotOnCurve(board, f), syncers);
     const curve = board.create('functiongraph', [f], { strokeColor: color, strokeWidth: 2.5, highlight: false });
 
     if (item.showDerivative) {
@@ -429,19 +534,19 @@ class GraphCard {
     }
   }
 
-  private drawTable(board: any, item: TableItem): void {
+  private drawTable(board: any, item: TableItem, syncers: (() => boolean)[]): void {
     const src = this.graph.items.find((i): i is ExprItem => i.kind === 'expr' && i.id === item.fromItem);
     const a = src && this.analysis(src);
     const f = src && a?.kind === 'function' ? (x: number) => a.f(x, src.params ?? {}) : null;
     const pts = item.rows
-      .map(([xs, ys]) => {
-        const x = parseNumber(xs);
-        return [x, f ? f(x) : parseNumber(ys)] as const;
+      .map(([xs, ys, label]) => {
+        const x = parseNumber(xs ?? '');
+        return [x, f ? f(x) : parseNumber(ys ?? ''), (label ?? '').trim()] as const;
       })
       .filter(([x, y]) => Number.isFinite(x) && Number.isFinite(y));
-    for (const [x, y] of pts) {
+    for (const [x, y, label] of pts) {
       board.create('point', [x, y], {
-        name: `(${fmt(x)}, ${fmt(y)})`, withLabel: true, fixed: true, size: 4,
+        name: label ? `${label} (${fmt(x)}, ${fmt(y)})` : `(${fmt(x)}, ${fmt(y)})`, withLabel: true, fixed: true, size: 4,
         fillColor: item.color, strokeColor: item.color,
         label: { fontSize: 11, strokeColor: item.color, offset: [6, 8] },
       });
@@ -449,6 +554,8 @@ class GraphCard {
     if (item.connect && pts.length > 1) {
       board.create('curve', [pts.map((p) => p[0]), pts.map((p) => p[1])], { strokeColor: item.color, strokeWidth: 2, highlight: false });
     }
+    const [x1, y1, x2, y2] = board.getBoundingBox();
+    this.drawItemLabel(board, item, () => (pts.length ? [pts[0][0] + (x2 - x1) * 0.03, pts[0][1] - (y1 - y2) * 0.06] : [x1, y1]), syncers);
   }
 
   destroy(): void {

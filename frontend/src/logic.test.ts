@@ -2,6 +2,35 @@ import { describe, expect, it } from 'vitest';
 import { analyze, derivative, integrate, variableLatex } from './mathfn';
 import { mathCell, mergeComments, type MathCell, newNotebook, normalize, parseNumber } from './model';
 import { decodeNotebook, encodeNotebook, shareLink } from './share';
+import { columnAt, groupTerms, type Atom } from './views/workrow';
+
+/** Fake measured atoms: each token 10px wide; null = nested inside the previous atom. */
+const atoms = (...tokens: (string | null)[]): (Atom | null)[] =>
+  tokens.map((t, i) => (t === null ? null : { latex: t, left: i * 10, right: i * 10 + 10 }));
+const terms = (...tokens: (string | null)[]) => groupTerms(atoms(...tokens)).map((c) => [c.first, c.last]);
+
+describe('work row terms', () => {
+  it('splits y + 5 = x + 3 into y | +5 | x | +3', () => {
+    expect(terms('y', '+', '5', '=', 'x', '+', '3')).toEqual([[1, 1], [2, 3], [5, 5], [6, 7]]);
+  });
+
+  it('treats a sign after · or = as part of the term', () => {
+    // -5/3 x · -3/5 = 10  → one term on the left
+    expect(terms('-', '\\frac53', 'x', '\\cdot', '-', '\\frac35', '=', '1', '0')).toEqual([[1, 6], [8, 9]]);
+    expect(terms('x', '=', '-', '6')).toEqual([[1, 1], [3, 4]]);
+  });
+
+  it('keeps nested atoms (inside fractions) in their term', () => {
+    expect(terms('x', '+', null, null, '\\frac12')).toEqual([[1, 1], [2, 5]]);
+  });
+
+  it('finds the term at the caret', () => {
+    const cols = groupTerms(atoms('y', '+', '5', '=', 'x', '+', '3'));
+    expect(columnAt(cols, 0)).toBe(0);
+    expect(columnAt(cols, 3)).toBe(1); // after "+5"
+    expect(columnAt(cols, 7)).toBe(3); // after "+3"
+  });
+});
 
 const fnAt = (latex: string, x: number, p = {}) => {
   const r = analyze(latex);
@@ -78,6 +107,23 @@ describe('model', () => {
     expect(nb.cells[1]).toMatchObject({ type: 'markdown', text: 'hi' });
     expect(nb.graphs).toEqual([]);
     expect(() => normalize({ foo: 1 })).toThrow();
+  });
+
+  it('keeps dividers, work rows and graph annotations', () => {
+    const nb = normalize({
+      title: 'HW',
+      cells: [
+        { type: 'divider', title: 'Problem 1', collapsed: true },
+        { type: 'math', latex: 'y+5=x+3', work: ['', '-5', '', '-5'] },
+        { type: 'math', latex: 'x=1', work: ['', ''] },
+      ],
+      graphs: [{ xLabel: 'hours', yLabel: 'cm', items: [{ kind: 'note', text: 'meet', pos: [1, 2] }, { kind: 'bogus' }] }],
+    });
+    expect(nb.cells[0]).toMatchObject({ type: 'divider', title: 'Problem 1', collapsed: true });
+    expect((nb.cells[1] as MathCell).work).toEqual(['', '-5', '', '-5']);
+    expect((nb.cells[2] as MathCell).work).toBeUndefined();
+    expect(nb.graphs[0]).toMatchObject({ xLabel: 'hours', yLabel: 'cm' });
+    expect(nb.graphs[0].items.map((i) => i.kind)).toEqual(['note']);
   });
 
   it('merges only new comments into matching cells', () => {

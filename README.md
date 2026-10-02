@@ -45,14 +45,36 @@ Each step is a live math editor ([MathLive](https://mathlive.io)). Type the way 
 | **Shift+Enter** | new step that starts as a copy of this one |
 | **↑ / ↓** | move between steps (inside a fraction, these move between its top and bottom) |
 | **Backspace** on an empty step | delete it |
+| **Shift+↓** | write work under this step (see below). **Esc** or **Shift+↑** goes back to the step |
 | **Alt+Enter** | add a text cell below |
+| **Option+H** (Alt+H) | add a divider (a section title) below |
 | **Alt+↑ / ↓** | move a cell up or down |
 | **⌘ /** or **Option /** (Ctrl+/ or Alt+/ on Windows) | comment on this step. Press it again or Esc to go back to the step. **In Safari use Option /**, because Safari keeps ⌘ / for View → Show Status Bar |
 | **Esc** | finish editing a text cell |
 
 Text cells use Markdown with `$inline math$` and `$$display math$$`.
-Step numbers restart after each text cell, so a `## Problem 2` heading starts again at step 1.
+Step numbers restart after each text cell or divider, so each problem starts again at step 1.
 Click **⌨︎ Keyboard** for an on-screen math keyboard.
+
+### Writing work under a step
+
+To show what you're doing to both sides, write it directly under the step:
+
+```
+y + 5 = x + 3
+  − 5     − 5
+```
+
+Put the cursor on a term (for example just after `+5`) and press **Shift+↓**, or click **±** next to the step.
+A row of boxes opens, one under each term, with the cursor in the box under that term. Type `-5`, then press
+**→** to move along to the box under `+3`. The work is drawn in blue and stays lined up with the terms
+if the step changes. **Enter** goes on to the next step.
+
+### Dividers
+
+A divider is a section title, like a Markdown heading. Add one with **Option+H** or **+ Divider** (hover between
+cells). Click **▾** to collapse everything under it, down to the next divider. Collapsed sections stay
+collapsed when you reopen the notebook, and they open again when you move into them.
 
 ## Comments
 
@@ -69,7 +91,10 @@ Click 📈 on a step to graph it, or open **📈 Graphs → + Add graph**. Each 
 - **Calculus tools** for `y = f(x)`: derivative curve, a draggable tangent line that shows its slope, and
   shaded area under the curve between two draggable bounds.
 - **Tables of points**: type x and y values, or pick "y from …" to compute y from an expression.
-  You can choose to connect the points.
+  You can choose to connect the points. The **label** column names a point on the graph (e.g. "meet").
+- **Annotations**: say what the **x-axis** and **y-axis** represent (e.g. "time (hours)"), give each
+  line or table a **label** (e.g. "Candle 1"), and add **+ Note** text anywhere. Labels and notes can be
+  dragged on the graph, and they stay where you put them.
 
 Drag to pan and scroll to zoom. ⟲ resets the view. Everything is open-source ([JSXGraph](https://jsxgraph.org))
 and works offline.

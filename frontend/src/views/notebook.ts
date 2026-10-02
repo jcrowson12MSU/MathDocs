@@ -4,11 +4,16 @@ import { MathfieldElement } from 'mathlive';
 import { api } from '../api';
 import { saveIncoming } from '../incoming';
 import { renderMarkdown } from '../markdown';
-import { mathCell, newId, nowIso, textCell, type Cell, type MathCell, type Notebook, type TextCell } from '../model';
+import {
+  dividerCell, mathCell, newId, nowIso, textCell,
+  type Cell, type DividerCell, type MathCell, type Notebook, type TextCell,
+} from '../model';
 import { loadSettings, saveSettings, shareBase } from '../settings';
 import { shareLink } from '../share';
 import { confirm, debounce, downloadJson, h, prompt, relativeTime, showDialog, toast } from '../ui';
 import { GraphPanel } from './graphs';
+import { focusable } from './mathfield';
+import { WorkRow } from './workrow';
 
 export type Mode = { kind: 'file'; name: string } | { kind: 'scratch' } | { kind: 'shared' };
 
@@ -37,6 +42,8 @@ interface CellEditor {
   el: HTMLElement;
   focus(where: 'start' | 'end'): void;
   suggest?(latex: string): void;
+  /** Open the work row under a math step. */
+  openWork?(): void;
 }
 
 export class NotebookView {
@@ -87,10 +94,15 @@ export class NotebookView {
     this.views.clear();
     this.nb.cells.forEach((c) => this.cellsEl.append(this.makeCell(c).el));
     this.renumber();
+    this.applyCollapse();
     this.setStatus(this.mode.kind === 'shared' ? 'Shared copy — not saved' : 'Saved');
     requestAnimationFrame(() => {
       if (this.graphsOpen) this.graphs.refresh();
-      if (!this.readOnly) this.views.get(this.nb.cells[this.nb.cells.length - 1].id)?.focus('end');
+      if (!this.readOnly) {
+        let last = this.nb.cells.length - 1;
+        if (this.isHidden(last)) last = this.neighbor(last, -1);
+        if (last >= 0) this.focusAt(last, 'end');
+      }
     });
   }
 
@@ -164,8 +176,60 @@ export class NotebookView {
   private focusAt(i: number, where: 'start' | 'end'): boolean {
     const cell = this.nb.cells[i];
     if (!cell) return false;
+    this.reveal(i);
     this.views.get(cell.id)?.focus(where);
     return true;
+  }
+
+  private isHidden(i: number): boolean {
+    const c = this.nb.cells[i];
+    return !!c && !!this.views.get(c.id)?.el.classList.contains('collapsed-away');
+  }
+
+  /** The nearest visible cell above (-1) or below (+1) cell i, or -1 if there is none. */
+  private neighbor(i: number, dir: -1 | 1): number {
+    let j = i + dir;
+    while (j >= 0 && j < this.nb.cells.length && this.isHidden(j)) j += dir;
+    return j >= 0 && j < this.nb.cells.length ? j : -1;
+  }
+
+  /** Expand the section containing cell i if it is collapsed. */
+  private reveal(i: number): void {
+    if (!this.isHidden(i)) return;
+    for (let j = i - 1; j >= 0; j--) {
+      const c = this.nb.cells[j];
+      if (c.type === 'divider') {
+        c.collapsed = false;
+        this.applyCollapse();
+        this.changed();
+        return;
+      }
+    }
+  }
+
+  /** Hide the cells under each collapsed divider, down to the next divider. */
+  private applyCollapse(): void {
+    let hiding = false;
+    let owner: { el: HTMLElement; count: number } | null = null;
+    const finish = () => {
+      if (owner) owner.el.querySelector('.hidden-count')!.textContent = owner.count ? `${owner.count} hidden` : '';
+    };
+    for (const cell of this.nb.cells) {
+      const v = this.views.get(cell.id);
+      if (!v) continue;
+      if (cell.type === 'divider') {
+        finish();
+        hiding = !!cell.collapsed;
+        owner = hiding ? { el: v.el, count: 0 } : null;
+        v.el.classList.toggle('is-collapsed', hiding);
+        if (!hiding) v.el.querySelector('.hidden-count')!.textContent = '';
+        v.el.classList.remove('collapsed-away');
+        continue;
+      }
+      v.el.classList.toggle('collapsed-away', hiding);
+      if (owner) owner.count++;
+    }
+    finish();
   }
 
   private insertCell(at: number, cell: Cell, focus = true): void {
@@ -175,8 +239,9 @@ export class NotebookView {
     const before = next ? this.views.get(next.id)?.el : null;
     this.cellsEl.insertBefore(view.el, before ?? null);
     this.renumber();
+    this.applyCollapse();
     this.changed();
-    if (focus) view.focus('start');
+    if (focus) this.focusAt(at, 'start');
   }
 
   private deleteCell(id: string, focusPrev = true): void {
@@ -187,9 +252,11 @@ export class NotebookView {
     this.views.delete(id);
     if (this.nb.cells.length === 0) this.insertCell(0, mathCell(), false);
     this.renumber();
+    this.applyCollapse();
     this.changed();
     if (focusPrev) this.focusAt(Math.max(0, i - 1), 'end');
-    const hasContent = cell.type === 'math' ? cell.latex.trim() : cell.text.trim();
+    const hasContent =
+      cell.type === 'math' ? cell.latex.trim() || cell.work?.length : cell.type === 'markdown' ? cell.text.trim() : cell.title.trim();
     if (hasContent || cell.comments.length) {
       toast('Cell deleted.', { label: 'Undo', run: () => this.insertCell(Math.min(i, this.nb.cells.length), cell) }, 6000);
     }
@@ -205,33 +272,35 @@ export class NotebookView {
     const ref = this.views.get(this.nb.cells[j + 1]?.id ?? '')?.el ?? null;
     this.cellsEl.insertBefore(el, ref);
     this.renumber();
+    this.applyCollapse();
     this.changed();
-    this.views.get(id)?.focus('end');
+    this.focusAt(this.index(id), 'end');
   }
 
   /** Enter in a math step: go to the next step, making one if needed. */
   private nextStep(id: string, copy: boolean): void {
     const i = this.index(id);
-    const cell = this.nb.cells[i] as MathCell;
+    const cell = this.nb.cells[i];
+    const latex = cell.type === 'math' ? cell.latex : '';
     const next = this.nb.cells[i + 1];
     if (!copy && next?.type === 'math' && !next.latex.trim()) {
-      this.views.get(next.id)?.suggest?.(cell.latex);
+      this.views.get(next.id)?.suggest?.(latex);
       this.focusAt(i + 1, 'start');
       return;
     }
-    const added = mathCell(copy ? cell.latex : '');
+    const added = mathCell(copy ? latex : '');
     this.insertCell(i + 1, added);
     if (copy) this.focusAt(i + 1, 'end');
-    else this.views.get(added.id)?.suggest?.(cell.latex);
+    else this.views.get(added.id)?.suggest?.(latex);
   }
 
-  /** Step numbers restart after each text cell, so each problem counts from 1. */
+  /** Step numbers restart after each text cell or divider, so each problem counts from 1. */
   private renumber(): void {
     let n = 0;
     for (const cell of this.nb.cells) {
       const v = this.views.get(cell.id);
       if (!v) continue;
-      if (cell.type === 'markdown') {
+      if (cell.type !== 'math') {
         n = 0;
         v.numberEl.textContent = '';
       } else {
@@ -258,6 +327,11 @@ export class NotebookView {
       this.views.get(cell.id)?.setCommentsOpen(true);
       return true;
     }
+    // Option+H (H for heading). Matched by physical key: Option+H types ˙ on a Mac.
+    if (e.altKey && !e.metaKey && !e.ctrlKey && e.code === 'KeyH' && !this.readOnly) {
+      this.insertCell(this.index(cell.id) + 1, dividerCell());
+      return true;
+    }
     return false;
   }
 
@@ -268,7 +342,10 @@ export class NotebookView {
     const el = h('div', { class: `cell ${cell.type}`, 'data-id': cell.id });
     el.addEventListener('focusin', () => (this.lastCellId = cell.id));
 
-    const content: CellEditor = cell.type === 'math' ? this.mathEditor(cell, el) : this.textEditor(cell, el);
+    const content: CellEditor =
+      cell.type === 'math' ? this.mathEditor(cell, el)
+      : cell.type === 'markdown' ? this.textEditor(cell, el)
+      : this.dividerEditor(cell, el);
 
     let open = false;
     const setCommentsOpen = (o: boolean) => {
@@ -293,6 +370,12 @@ export class NotebookView {
       commentBtn,
       cell.type === 'math' && !this.readOnly
         ? h('button', {
+            class: 'icon', title: 'Write work under this step (Shift+↓)',
+            onclick: () => content.openWork?.(),
+          }, '±')
+        : null,
+      cell.type === 'math' && !this.readOnly
+        ? h('button', {
             class: 'icon', title: 'Graph this step',
             onclick: () => {
               if (!this.graphsOpen) this.toggleGraphs();
@@ -308,6 +391,7 @@ export class NotebookView {
     const inserter = this.readOnly ? null : h('div', { class: 'inserter' },
       h('button', { onclick: () => this.insertCell(this.index(cell.id) + 1, mathCell()) }, '+ Step'),
       h('button', { onclick: () => this.insertCell(this.index(cell.id) + 1, textCell()) }, '+ Text'),
+      h('button', { onclick: () => this.insertCell(this.index(cell.id) + 1, dividerCell()) }, '+ Divider'),
     );
 
     el.append(h('div', { class: 'gutter' }, numberEl), h('div', { class: 'cell-body' }, content.el, commentsEl), actions);
@@ -318,7 +402,7 @@ export class NotebookView {
     return view;
   }
 
-  private mathEditor(cell: MathCell, el: HTMLElement) {
+  private mathEditor(cell: MathCell, el: HTMLElement): CellEditor {
     const mf = new MathfieldElement();
     mf.value = cell.latex;
     mf.readOnly = this.readOnly;
@@ -333,10 +417,27 @@ export class NotebookView {
     };
     showPlaceholder();
     mf.setAttribute('math-virtual-keyboard-policy', 'manual');
+    const focus = focusable(mf, showPlaceholder);
+
+    const work = new WorkRow(mf, cell, {
+      readOnly: this.readOnly,
+      onChange: () => this.changed(),
+      toStep: (position) => focus(position),
+      toNextStep: () => {
+        const j = this.neighbor(this.index(cell.id), 1);
+        if (j >= 0) this.focusAt(j, 'start');
+      },
+      onEnter: () => {
+        cell.latex = mf.value;
+        this.nextStep(cell.id, false);
+      },
+      cellKeys: (e) => this.cellKeys(e, cell),
+    });
 
     mf.addEventListener('input', () => {
       cell.latex = mf.value;
       if (suggestion && mf.value) suggest('');
+      work.scheduleLayout();
       this.changed();
     });
     mf.addEventListener('focus', () => {
@@ -345,10 +446,10 @@ export class NotebookView {
     });
     mf.addEventListener('blur', () => el.classList.remove('focused'));
     mf.addEventListener('move-out', (e) => {
-      const i = this.index(cell.id);
       const dir = e.detail.direction;
-      const target = dir === 'upward' ? i - 1 : dir === 'downward' ? i + 1 : -1;
-      if (target < 0 || target >= this.nb.cells.length) return;
+      if (dir !== 'upward' && dir !== 'downward') return;
+      const target = this.neighbor(this.index(cell.id), dir === 'upward' ? -1 : 1);
+      if (target < 0) return;
       e.preventDefault();
       // Move focus after MathLive finishes handling this key; doing it inside the
       // event leaves the old field receiving the next keystroke.
@@ -363,9 +464,12 @@ export class NotebookView {
         return;
       }
       const plain = !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey;
-      if (e.key === 'ArrowRight' && plain && suggestion && !mf.value && !this.readOnly) {
+      const stop = () => {
         e.preventDefault();
         e.stopPropagation();
+      };
+      if (e.key === 'ArrowRight' && plain && suggestion && !mf.value && !this.readOnly) {
+        stop();
         mf.value = suggestion;
         cell.latex = suggestion;
         suggest('');
@@ -373,67 +477,111 @@ export class NotebookView {
         this.changed();
         return;
       }
+      if (e.key === 'ArrowDown' && e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey && !this.readOnly && mf.value) {
+        stop();
+        const at = mf.position;
+        setTimeout(() => work.openAt(at));
+        return;
+      }
       if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && plain) {
         // At the top level of the expression, ↑/↓ always change steps. Inside a fraction
         // or exponent, MathLive moves between parts and fires move-out at the edge.
         const depth = mf.getElementInfo(mf.position)?.depth ?? 0;
-        const target = this.index(cell.id) + (e.key === 'ArrowUp' ? -1 : 1);
-        if (depth === 0 && target >= 0 && target < this.nb.cells.length) {
-          e.preventDefault();
-          e.stopPropagation();
+        const target = this.neighbor(this.index(cell.id), e.key === 'ArrowUp' ? -1 : 1);
+        if (depth === 0 && target >= 0) {
+          stop();
           setTimeout(() => this.focusAt(target, e.key === 'ArrowUp' ? 'end' : 'start'));
           return;
         }
       }
       if (this.readOnly || mf.mode === 'latex') return;
       if (e.key === 'Enter' && !e.metaKey && !e.ctrlKey && !e.altKey) {
-        e.preventDefault();
-        e.stopPropagation();
+        stop();
         // MathLive's input event can trail the last keystroke; read the live value.
         cell.latex = mf.value;
         this.nextStep(cell.id, e.shiftKey);
-      } else if (e.key === 'Backspace' && !mf.value && this.nb.cells.length > 1) {
-        e.preventDefault();
-        e.stopPropagation();
+      } else if (e.key === 'Backspace' && !mf.value && !cell.work?.length && this.nb.cells.length > 1) {
+        stop();
         this.deleteCell(cell.id);
       }
     }, true);
 
-    // A new mathfield can't take focus until MathLive has mounted it (one frame after insertion).
-    let mounted = false;
-    let pendingFocus: 'start' | 'end' | null = null;
-    const focusNow = (where: 'start' | 'end') => {
-      // MathLive keeps the keyboard if another mathfield still holds focus, so release it first.
-      const active = document.activeElement as HTMLElement | null;
-      if (active && active !== mf) active.blur();
-      mf.focus();
-      // MathLive hands the keyboard over ~60ms after focus(); focus its input sink now so
-      // quick keystrokes (like holding ↑) aren't dropped in between.
-      mf.shadowRoot?.querySelector<HTMLElement>('[part="keyboard-sink"]')?.focus({ preventScroll: true });
-      mf.position = where === 'start' ? 0 : mf.lastOffset;
-    };
-    mf.addEventListener('mount', () => {
-      mounted = true;
-      showPlaceholder();
-      if (pendingFocus) focusNow(pendingFocus);
-      pendingFocus = null;
-    });
-
+    const box = h('div', { class: 'step-box' }, mf, work.el);
+    work.scheduleLayout();
     return {
-      el: mf as HTMLElement,
+      el: box,
       suggest,
-      focus: (where: 'start' | 'end') => {
-        if (mounted) focusNow(where);
-        else {
-          // Release the previous field so fast typing doesn't land in the wrong step.
-          (document.activeElement as HTMLElement | null)?.blur();
-          pendingFocus = where;
+      focus,
+      openWork: () => {
+        if (!mf.value) {
+          focus('end');
+          return;
         }
+        work.openAt(mf.lastOffset);
       },
     };
   }
 
-  private textEditor(cell: TextCell, el: HTMLElement) {
+  private dividerEditor(cell: DividerCell, el: HTMLElement): CellEditor {
+    const toggle = h('button', { class: 'collapse-btn', title: 'Collapse or expand this section' }, '▾');
+    toggle.addEventListener('click', () => {
+      cell.collapsed = !cell.collapsed;
+      this.applyCollapse();
+      this.changed();
+    });
+    const title = this.readOnly
+      ? h('span', { class: 'divider-title' }, cell.title || 'Untitled section')
+      : h('input', { class: 'divider-title', value: cell.title, placeholder: 'Section title', 'aria-label': 'Section title' });
+    if (title instanceof HTMLInputElement) {
+      title.addEventListener('focus', () => el.classList.add('focused'));
+      title.addEventListener('blur', () => el.classList.remove('focused'));
+      title.addEventListener('input', () => {
+        cell.title = title.value;
+        this.changed();
+      });
+      title.addEventListener('keydown', (e) => {
+        if (this.cellKeys(e, cell)) {
+          e.preventDefault();
+          return;
+        }
+        const i = this.index(cell.id);
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          // Into the section: open it and go to its first cell (making a step if it's empty).
+          if (cell.collapsed) {
+            cell.collapsed = false;
+            this.applyCollapse();
+            this.changed();
+          }
+          const next = this.nb.cells[i + 1];
+          if (next && next.type !== 'divider') this.focusAt(i + 1, 'start');
+          else this.insertCell(i + 1, mathCell());
+        } else if (e.key === 'ArrowUp' && this.neighbor(i, -1) >= 0) {
+          e.preventDefault();
+          this.focusAt(this.neighbor(i, -1), 'end');
+        } else if (e.key === 'ArrowDown' && this.neighbor(i, 1) >= 0) {
+          e.preventDefault();
+          this.focusAt(this.neighbor(i, 1), 'start');
+        } else if (e.key === 'Backspace' && !title.value && this.nb.cells.length > 1) {
+          e.preventDefault();
+          this.deleteCell(cell.id);
+        }
+      });
+    }
+    const bar = h('div', { class: 'divider-bar' }, toggle, title, h('span', { class: 'hidden-count' }));
+    return {
+      el: bar,
+      focus: (where) => {
+        if (title instanceof HTMLInputElement) {
+          title.focus();
+          const pos = where === 'start' ? 0 : title.value.length;
+          title.setSelectionRange(pos, pos);
+        } else toggle.focus();
+      },
+    };
+  }
+
+  private textEditor(cell: TextCell, el: HTMLElement): CellEditor {
     const view = h('div', { class: 'md-view', tabindex: '0' });
     const area = h('textarea', { class: 'md-edit', rows: 1, placeholder: 'Notes… (Markdown, with $math$ like $x^2$)' });
     area.value = cell.text;
@@ -478,10 +626,10 @@ export class NotebookView {
         area.focus();
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
-        this.focusAt(i - 1, 'end');
+        this.focusAt(this.neighbor(i, -1), 'end');
       } else if (e.key === 'ArrowDown') {
         e.preventDefault();
-        this.focusAt(i + 1, 'start');
+        this.focusAt(this.neighbor(i, 1), 'start');
       }
     });
     area.addEventListener('input', () => {
@@ -500,12 +648,12 @@ export class NotebookView {
       const atEnd = !area.value.slice(area.selectionEnd).includes('\n');
       const noSel = area.selectionStart === area.selectionEnd;
       if (e.key === 'Escape') area.blur();
-      else if (e.key === 'ArrowUp' && atStart && noSel && i > 0) {
+      else if (e.key === 'ArrowUp' && atStart && noSel && this.neighbor(i, -1) >= 0) {
         e.preventDefault();
-        this.focusAt(i - 1, 'end');
-      } else if (e.key === 'ArrowDown' && atEnd && noSel && i < this.nb.cells.length - 1) {
+        this.focusAt(this.neighbor(i, -1), 'end');
+      } else if (e.key === 'ArrowDown' && atEnd && noSel && this.neighbor(i, 1) >= 0) {
         e.preventDefault();
-        this.focusAt(i + 1, 'start');
+        this.focusAt(this.neighbor(i, 1), 'start');
       } else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
         this.nextStep(cell.id, false);
@@ -719,7 +867,10 @@ export function showHelp(): void {
     ['Shift + Enter', 'New step that starts as a copy of this one'],
     ['↑ / ↓', 'Move between steps'],
     ['Backspace on an empty step', 'Delete it'],
+    ['Shift + ↓', 'Write work under this step (like −5 under +5); Esc or Shift + ↑ to go back'],
+    ['← / → in the work row', 'Move between the boxes under each term'],
     ['Alt + Enter', 'Add a text cell below'],
+    ['Option + H', 'Add a divider (section title) below; click ▾ to collapse the section'],
     ['Alt + ↑ / ↓', 'Move this cell up or down'],
     ['⌘ + /  or  Option + /', 'Comment on this step; again or Esc to close (use Option + / in Safari)'],
     ['/', 'Fraction (type 1/2, or select x+1 then /)'],

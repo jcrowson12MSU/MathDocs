@@ -15,6 +15,11 @@ export interface MathCell {
   id: string;
   type: 'math';
   latex: string;
+  /**
+   * Work written under the step, one entry per term of the step (e.g. "-5" under "+5").
+   * Terms are split at top-level + − and relations; see views/workrow.ts.
+   */
+  work?: string[];
   comments: Comment[];
 }
 
@@ -25,7 +30,16 @@ export interface TextCell {
   comments: Comment[];
 }
 
-export type Cell = MathCell | TextCell;
+/** A section header; collapsing it hides everything down to the next divider. */
+export interface DividerCell {
+  id: string;
+  type: 'divider';
+  title: string;
+  collapsed?: boolean;
+  comments: Comment[];
+}
+
+export type Cell = MathCell | TextCell | DividerCell;
 
 export interface ExprItem {
   id: string;
@@ -36,6 +50,9 @@ export interface ExprItem {
   /** Values for letters other than x and y, shown as sliders (e.g. a, b in ax+b). */
   params?: Record<string, number>;
   showDerivative?: boolean;
+  /** What the line or curve represents, drawn on the graph at labelPos (draggable). */
+  label?: string;
+  labelPos?: [number, number] | null;
   /** x position of a draggable tangent line, or null when off. */
   tangentAt?: number | null;
   /** Shaded area under the curve between two draggable bounds, or null when off. */
@@ -47,19 +64,34 @@ export interface TableItem {
   kind: 'table';
   color: string;
   hidden?: boolean;
-  /** Each row is [x, y] as typed, so "1/2" survives a round trip. */
-  rows: [string, string][];
+  /** Each row is [x, y, label?] as typed, so "1/2" survives a round trip. */
+  rows: string[][];
+  label?: string;
+  labelPos?: [number, number] | null;
   connect?: boolean;
   /** When set, y values are computed from this expression item. */
   fromItem?: string | null;
 }
 
-export type GraphItem = ExprItem | TableItem;
+/** A free text annotation placed anywhere on the graph. */
+export interface NoteItem {
+  id: string;
+  kind: 'note';
+  color: string;
+  hidden?: boolean;
+  text: string;
+  pos: [number, number];
+}
+
+export type GraphItem = ExprItem | TableItem | NoteItem;
 
 export interface Graph {
   id: string;
   title: string;
   items: GraphItem[];
+  /** What each axis represents, e.g. "time (hours)". */
+  xLabel?: string;
+  yLabel?: string;
   /** [xmin, ymax, xmax, ymin], JSXGraph's order. */
   bbox: [number, number, number, number];
 }
@@ -95,6 +127,10 @@ export function textCell(text = ''): TextCell {
   return { id: newId(), type: 'markdown', text, comments: [] };
 }
 
+export function dividerCell(title = ''): DividerCell {
+  return { id: newId(), type: 'divider', title, collapsed: false, comments: [] };
+}
+
 export function newGraph(): Graph {
   return { id: newId(), title: '', items: [], bbox: [...DEFAULT_BBOX] };
 }
@@ -105,6 +141,10 @@ export function exprItem(latex = '', color = COLORS[0]): ExprItem {
 
 export function tableItem(color = COLORS[0]): TableItem {
   return { id: newId(), kind: 'table', color, rows: [['', ''], ['', ''], ['', '']], connect: false, fromItem: null };
+}
+
+export function noteItem(pos: [number, number], color = COLORS[6]): NoteItem {
+  return { id: newId(), kind: 'note', color, text: '', pos };
 }
 
 export function nextColor(graph: Graph): string {
@@ -147,14 +187,23 @@ export function normalize(raw: unknown): Notebook {
         : [];
       const id = String(c.id ?? newId());
       if (c.type === 'markdown') return { id, type: 'markdown', text: String(c.text ?? ''), comments };
-      return { id, type: 'math', latex: String(c.latex ?? ''), comments };
+      if (c.type === 'divider') {
+        return { id, type: 'divider', title: String(c.title ?? ''), collapsed: !!c.collapsed, comments };
+      }
+      const math: MathCell = { id, type: 'math', latex: String(c.latex ?? ''), comments };
+      if (Array.isArray(c.work) && c.work.some((w: unknown) => typeof w === 'string' && w.trim())) {
+        math.work = c.work.map((w: unknown) => (typeof w === 'string' ? w : ''));
+      }
+      return math;
     });
   const graphs: Graph[] = Array.isArray(r.graphs)
     ? r.graphs.map((g: any) => ({
         id: String(g.id ?? newId()),
         title: String(g.title ?? ''),
+        ...(typeof g.xLabel === 'string' && g.xLabel ? { xLabel: g.xLabel } : {}),
+        ...(typeof g.yLabel === 'string' && g.yLabel ? { yLabel: g.yLabel } : {}),
         bbox: Array.isArray(g.bbox) && g.bbox.length === 4 && g.bbox.every(Number.isFinite) ? g.bbox : [...DEFAULT_BBOX],
-        items: Array.isArray(g.items) ? g.items.filter((i: any) => i && (i.kind === 'expr' || i.kind === 'table')) : [],
+        items: Array.isArray(g.items) ? g.items.filter((i: any) => i && ['expr', 'table', 'note'].includes(i.kind)) : [],
       }))
     : [];
   return {

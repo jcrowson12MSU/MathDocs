@@ -9,6 +9,7 @@
   --danger: #d6336c;
   --comment: #fff6d6;
   --comment-ink: #6b5200;
+  --work: #1c64f2;
   --radius: 10px;
   --font: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   color-scheme: light;
@@ -26,6 +27,7 @@
     --danger: #ff6b98;
     --comment: #3a3320;
     --comment-ink: #f0d98a;
+    --work: #8fb3ff;
     color-scheme: dark;
   }
 }
@@ -244,6 +246,62 @@ table.help td { padding: 4px 10px 4px 0; vertical-align: top; }
 #toasts { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 8px; z-index: 1000; }
 .toast { background: var(--ink); color: var(--paper); padding: 9px 14px; border-radius: 10px; font-size: 14px; display: flex; gap: 12px; align-items: center; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.2); }
 .toast .link { color: var(--accent-soft); }
+
+/* ---------- work under a step ---------- */
+.step-box { position: relative; }
+.work-row { position: relative; height: 40px; margin-top: 2px; }
+.work-row[hidden] { display: none; }
+math-field.work-slot {
+  position: absolute; top: 0; transform: translateX(-50%);
+  display: inline-block; width: auto; padding: 2px 3px; font-size: 22px;
+  color: var(--work); background: transparent; box-shadow: none;
+  border: 1px dashed transparent; border-radius: 6px; text-align: center;
+  --caret-color: var(--work);
+}
+.work-row:focus-within math-field.work-slot { border-color: var(--line); }
+math-field.work-slot:focus-within { border-color: var(--work) !important; background: var(--paper); }
+math-field.work-slot.orphan { opacity: 0.6; }
+math-field.work-slot[read-only] { border-color: transparent !important; }
+
+/* ---------- dividers ---------- */
+.cell.divider { margin-top: 18px; }
+.cell.divider:first-child { margin-top: 0; }
+.divider-bar {
+  display: flex; align-items: center; gap: 6px; padding: 4px 6px 6px 0;
+  border-bottom: 2px solid var(--line);
+}
+.cell.divider.focused .divider-bar { border-bottom-color: var(--accent); }
+.collapse-btn {
+  border: none; background: none; color: var(--muted); cursor: pointer; font-size: 15px;
+  width: 26px; height: 26px; border-radius: 6px; transition: transform 0.15s;
+}
+.collapse-btn:hover { background: var(--accent-soft); color: var(--ink); }
+.cell.divider.is-collapsed .collapse-btn { transform: rotate(-90deg); }
+.divider-title {
+  flex: 1; font: 700 20px Georgia, 'Times New Roman', serif; color: var(--ink);
+  border: none; background: transparent; padding: 2px 4px; outline: none; min-width: 0;
+}
+.divider-title::placeholder { color: var(--muted); font-weight: 400; }
+.hidden-count { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.cell.collapsed-away { display: none; }
+
+/* ---------- graph annotations ---------- */
+.board-wrap { display: flex; align-items: stretch; }
+.board-col { flex: 1; min-width: 0; }
+.axis-label { color: var(--muted); font-size: 13px; font-weight: 600; text-align: center; }
+.axis-label:empty { display: none; }
+.axis-label.x { padding: 4px 0 2px; }
+.axis-label.y { writing-mode: vertical-rl; transform: rotate(180deg); padding: 0 4px; }
+.axis-fields { display: flex; gap: 10px; padding: 6px 8px 0; flex-wrap: wrap; }
+.axis-field { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); flex: 1; min-width: 150px; }
+.axis-input, .item-label-input, .note-input {
+  flex: 1; min-width: 0; font: inherit; font-size: 13px; padding: 4px 7px; border: 1px solid var(--line);
+  border-radius: 6px; background: var(--paper); color: var(--ink);
+}
+.item-label-input { display: block; width: calc(100% - 26px); margin: 6px 0 0 26px; }
+.note-tag { font-size: 12px; font-weight: 600; color: var(--muted); }
+.points input.point-label { width: 110px; text-align: left; font-family: var(--font); }
+.points .label-head { text-align: left; }
 
 @media (max-width: 900px) {
   .nb-main.graphs-open { grid-template-columns: 1fr; grid-template-rows: auto auto; overflow-y: auto; }
