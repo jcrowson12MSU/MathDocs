@@ -437,13 +437,16 @@ export class NotebookView {
     // ± only applies to steps with two sides (an =, <, > …).
     const updateCanWork = () => el.classList.toggle('can-work', hasRelation(mf.value));
     updateCanWork();
-    mf.addEventListener('input', () => {
+    // Everything that follows from the step's contents changing. Setting mf.value from code
+    // (like accepting a suggestion) fires no input event, so those paths call this directly.
+    const contentChanged = () => {
       cell.latex = mf.value;
       if (suggestion && mf.value) suggest('');
       updateCanWork();
       work.scheduleLayout();
       this.changed();
-    });
+    };
+    mf.addEventListener('input', contentChanged);
     mf.addEventListener('focus', () => {
       this.lastMathfield = mf;
       el.classList.add('focused');
@@ -475,10 +478,8 @@ export class NotebookView {
       if (e.key === 'ArrowRight' && plain && suggestion && !mf.value && !this.readOnly) {
         stop();
         mf.value = suggestion;
-        cell.latex = suggestion;
-        suggest('');
+        contentChanged();
         mf.position = mf.lastOffset;
-        this.changed();
         return;
       }
       if (e.key === 'ArrowDown' && e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey && !this.readOnly && mf.value) {
