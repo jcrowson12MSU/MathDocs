@@ -40,12 +40,14 @@ Each step is a live math editor ([MathLive](https://mathlive.io)). Type the way 
 
 | Key | Action |
 |---|---|
-| **Enter** | next step (adds a new one if needed) |
+| **Enter** | next step. The previous step appears in gray as a suggested starting point |
+| **→** on a gray suggestion | accept it and edit from there (or just start typing to write something new) |
 | **Shift+Enter** | new step that starts as a copy of this one |
 | **↑ / ↓** | move between steps (inside a fraction, these move between its top and bottom) |
 | **Backspace** on an empty step | delete it |
 | **Alt+Enter** | add a text cell below |
 | **Alt+↑ / ↓** | move a cell up or down |
+| **⌘ /** (Ctrl+/ on Windows) | comment on this step. Press it again or Esc to go back to the step |
 | **Esc** | finish editing a text cell |
 
 Text cells use Markdown with `$inline math$` and `$$display math$$`.
@@ -54,7 +56,7 @@ Click **⌨︎ Keyboard** for an on-screen math keyboard.
 
 ## Comments
 
-Click 💬 next to any step or text cell to leave a comment. You enter your name the first time,
+Click 💬 next to any step or text cell, or press **⌘ /**, to leave a comment. You enter your name the first time,
 and it's saved in the browser. Comments are stored in the notebook file.
 
 ## Graphs
@@ -62,7 +64,8 @@ and it's saved in the browser. Comments are stored in the notebook file.
 Click 📈 on a step to graph it, or open **📈 Graphs → + Add graph**. Each graph can hold:
 
 - **Expressions**: `y = 2x + 1`, `x^2 - 4`, `f(x) = \sin x`, `x = 3`, circles and other implicit
-  curves (`x^2 + y^2 = 25`). Any other letter (like `a` and `b` in `y = ax + b`) gets a slider.
+  curves (`x^2 + y^2 = 25`). Any other variable gets a slider, including subscripted and Greek ones
+  (`a` and `b` in `y = ax + b`, `a_1`, `v_{max}`, `\alpha`).
 - **Calculus tools** for `y = f(x)`: derivative curve, a draggable tangent line that shows its slope, and
   shaded area under the curve between two draggable bounds.
 - **Tables of points**: type x and y values, or pick "y from …" to compute y from an expression.

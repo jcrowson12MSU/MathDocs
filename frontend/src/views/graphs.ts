@@ -1,8 +1,9 @@
 // Graph panel: interactive JSXGraph boards with expressions, tables of points, and calculus tools.
 
 import JXG from 'jsxgraph';
+import katex from 'katex';
 import { MathfieldElement } from 'mathlive';
-import { analyze, derivative, integrate, type Plottable } from '../mathfn';
+import { analyze, derivative, integrate, variableLatex, type Plottable } from '../mathfn';
 import {
   COLORS, DEFAULT_BBOX, exprItem, newGraph, nextColor, parseNumber, tableItem,
   type ExprItem, type Graph, type Notebook, type TableItem,
@@ -261,7 +262,9 @@ class GraphCard {
       range.value = value.value;
       set(Number(value.value));
     });
-    return h('div', { class: 'param' }, h('span', { class: 'param-name' }, `${name} =`), range, value);
+    const label = h('span', { class: 'param-name' });
+    label.innerHTML = katex.renderToString(`${variableLatex(name)} =`, { throwOnError: false });
+    return h('div', { class: 'param' }, label, range, value);
   }
 
   private tableRow(item: TableItem): HTMLElement {

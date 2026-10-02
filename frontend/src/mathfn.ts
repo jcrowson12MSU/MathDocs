@@ -77,7 +77,8 @@ export function analyze(latex: string): Plottable {
   }
 
   const unknowns = [...(ce.box(body).unknowns as string[])];
-  const params = unknowns.filter((s) => s !== 'x' && s !== 'y' && s.length === 1).sort();
+  // Every other variable becomes a slider: a, b, a_1, v_{max}, \alpha …
+  const params = unknowns.filter((s) => s !== 'x' && s !== 'y').sort();
   const fn = compileJson(body);
   if (typeof fn === 'string') return { kind: 'error', message: fn };
 
@@ -85,6 +86,11 @@ export function analyze(latex: string): Plottable {
     return { kind: 'implicit', f: (x, y, p) => fn({ ...p, x, y }), params };
   }
   return { kind: 'function', f: (x, p) => fn({ ...p, x }), params };
+}
+
+/** LaTeX for a variable name as Compute Engine spells it, e.g. "a_12" -> "a_{12}", "alpha" -> "\alpha". */
+export function variableLatex(name: string): string {
+  return ce.box(name).latex;
 }
 
 /** Numerical derivative (central difference). */

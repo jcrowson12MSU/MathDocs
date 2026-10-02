@@ -21,6 +21,14 @@ interface CellView {
   focus(where: 'start' | 'end'): void;
   numberEl: HTMLElement;
   setCommentsOpen(open: boolean): void;
+  /** Show the previous step in gray as a starting point (math cells only). */
+  suggest?(latex: string): void;
+}
+
+interface CellEditor {
+  el: HTMLElement;
+  focus(where: 'start' | 'end'): void;
+  suggest?(latex: string): void;
 }
 
 export class NotebookView {
@@ -188,11 +196,14 @@ export class NotebookView {
     const cell = this.nb.cells[i] as MathCell;
     const next = this.nb.cells[i + 1];
     if (!copy && next?.type === 'math' && !next.latex.trim()) {
+      this.views.get(next.id)?.suggest?.(cell.latex);
       this.focusAt(i + 1, 'start');
       return;
     }
-    this.insertCell(i + 1, mathCell(copy ? cell.latex : ''));
+    const added = mathCell(copy ? cell.latex : '');
+    this.insertCell(i + 1, added);
     if (copy) this.focusAt(i + 1, 'end');
+    else this.views.get(added.id)?.suggest?.(cell.latex);
   }
 
   /** Step numbers restart after each text cell, so each problem counts from 1. */
@@ -224,6 +235,10 @@ export class NotebookView {
       this.insertCell(this.index(cell.id) + 1, textCell());
       return true;
     }
+    if ((e.metaKey || e.ctrlKey) && e.key === '/') {
+      this.views.get(cell.id)?.setCommentsOpen(true);
+      return true;
+    }
     return false;
   }
 
@@ -233,17 +248,26 @@ export class NotebookView {
     const commentBtn = h('button', { class: 'icon comment-btn', title: 'Comments' });
     const el = h('div', { class: `cell ${cell.type}`, 'data-id': cell.id });
 
-    const content = cell.type === 'math' ? this.mathEditor(cell, el) : this.textEditor(cell, el);
+    const content: CellEditor = cell.type === 'math' ? this.mathEditor(cell, el) : this.textEditor(cell, el);
 
     let open = false;
     const setCommentsOpen = (o: boolean) => {
+      if (o && open) {
+        commentsEl.querySelector('textarea')?.focus();
+        return;
+      }
       open = o;
       el.classList.toggle('comments-open', open);
-      this.renderComments(cell, commentsEl, commentBtn, open, () => setCommentsOpen(false));
+      this.renderComments(cell, commentsEl, commentBtn, open, closeComments);
       if (open) commentsEl.querySelector('textarea')?.focus();
     };
     commentBtn.addEventListener('click', () => setCommentsOpen(!open));
-    this.renderComments(cell, commentsEl, commentBtn, false, () => setCommentsOpen(false));
+    // Closing from the keyboard (Esc or Cmd+/) puts you back in the cell.
+    const closeComments = () => {
+      setCommentsOpen(false);
+      content.focus('end');
+    };
+    this.renderComments(cell, commentsEl, commentBtn, false, closeComments);
 
     const actions = h('div', { class: 'cell-actions' },
       commentBtn,
@@ -269,7 +293,7 @@ export class NotebookView {
     el.append(h('div', { class: 'gutter' }, numberEl), h('div', { class: 'cell-body' }, content.el, commentsEl), actions);
     if (inserter) el.append(inserter);
 
-    const view: CellView = { cell, el, focus: content.focus, numberEl, setCommentsOpen };
+    const view: CellView = { cell, el, focus: content.focus, numberEl, setCommentsOpen, suggest: content.suggest };
     this.views.set(cell.id, view);
     return view;
   }
@@ -278,11 +302,21 @@ export class NotebookView {
     const mf = new MathfieldElement();
     mf.value = cell.latex;
     mf.readOnly = this.readOnly;
-    mf.setAttribute('placeholder', '\\text{Write a step}');
+    // The suggested starting point is shown as the (gray) placeholder; → accepts it.
+    // Set via the attribute: MathLive reads it when it mounts and watches it afterwards.
+    let suggestion = '';
+    const showPlaceholder = () => mf.setAttribute('placeholder', suggestion || '\\text{Write a step}');
+    const suggest = (latex: string) => {
+      suggestion = mf.value ? '' : latex.trim();
+      showPlaceholder();
+      el.classList.toggle('has-suggestion', !!suggestion);
+    };
+    showPlaceholder();
     mf.setAttribute('math-virtual-keyboard-policy', 'manual');
 
     mf.addEventListener('input', () => {
       cell.latex = mf.value;
+      if (suggestion && mf.value) suggest('');
       this.changed();
     });
     mf.addEventListener('focus', () => {
@@ -309,6 +343,16 @@ export class NotebookView {
         return;
       }
       const plain = !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey;
+      if (e.key === 'ArrowRight' && plain && suggestion && !mf.value && !this.readOnly) {
+        e.preventDefault();
+        e.stopPropagation();
+        mf.value = suggestion;
+        cell.latex = suggestion;
+        suggest('');
+        mf.position = mf.lastOffset;
+        this.changed();
+        return;
+      }
       if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && plain) {
         // At the top level of the expression, ↑/↓ always change steps. Inside a fraction
         // or exponent, MathLive moves between parts and fires move-out at the edge.
@@ -325,6 +369,8 @@ export class NotebookView {
       if (e.key === 'Enter' && !e.metaKey && !e.ctrlKey && !e.altKey) {
         e.preventDefault();
         e.stopPropagation();
+        // MathLive's input event can trail the last keystroke; read the live value.
+        cell.latex = mf.value;
         this.nextStep(cell.id, e.shiftKey);
       } else if (e.key === 'Backspace' && !mf.value && this.nb.cells.length > 1) {
         e.preventDefault();
@@ -348,12 +394,14 @@ export class NotebookView {
     };
     mf.addEventListener('mount', () => {
       mounted = true;
+      showPlaceholder();
       if (pendingFocus) focusNow(pendingFocus);
       pendingFocus = null;
     });
 
     return {
       el: mf as HTMLElement,
+      suggest,
       focus: (where: 'start' | 'end') => {
         if (mounted) focusNow(where);
         else {
@@ -484,7 +532,10 @@ export class NotebookView {
       if (e.key === 'Enter' && (e.metaKey || e.ctrlKey || !e.shiftKey)) {
         e.preventDefault();
         submit();
-      } else if (e.key === 'Escape') close();
+      } else if (e.key === 'Escape' || ((e.metaKey || e.ctrlKey) && e.key === '/')) {
+        e.preventDefault();
+        close();
+      }
     });
     box.replaceChildren(
       ...cell.comments.map((c) =>
@@ -638,12 +689,14 @@ export class NotebookView {
 
 export function showHelp(): void {
   const rows: [string, string][] = [
-    ['Enter', 'Next step (makes a new one at the end)'],
+    ['Enter', 'Next step, with this step shown in gray as a starting point'],
+    ['→ on a gray suggestion', 'Accept it and edit from there (or just type to start fresh)'],
     ['Shift + Enter', 'New step that starts as a copy of this one'],
     ['↑ / ↓', 'Move between steps'],
     ['Backspace on an empty step', 'Delete it'],
     ['Alt + Enter', 'Add a text cell below'],
     ['Alt + ↑ / ↓', 'Move this cell up or down'],
+    ['⌘ + /  (Ctrl + / on Windows)', 'Comment on this step; again or Esc to close'],
     ['/', 'Fraction (type 1/2, or select x+1 then /)'],
     ['^  and  _', 'Exponent and subscript; → to leave'],
     ['sqrt, pi, theta, int, lim, sum', 'Type the word to get the symbol'],

@@ -128,7 +128,7 @@ math-field {
   --caret-color: var(--accent);
   --selection-background-color: var(--accent-soft);
   --placeholder-color: var(--muted);
-  --placeholder-opacity: 0.5;
+  --placeholder-opacity: 0.55;
 }
 .cell.math math-field { box-shadow: 0 1px 0 var(--line); }
 .cell.math math-field:hover { border-color: var(--line); }
@@ -206,7 +206,7 @@ math-field[read-only] { box-shadow: none; }
 .item-msg:empty { display: none; }
 .params { padding-left: 26px; }
 .param { display: flex; align-items: center; gap: 8px; font-size: 14px; margin-top: 4px; }
-.param-name { font-family: Georgia, serif; font-style: italic; min-width: 28px; }
+.param-name { min-width: 28px; white-space: nowrap; }
 .param input[type=range] { flex: 1; accent-color: var(--accent); }
 .param-value { width: 64px; padding: 2px 4px; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); color: var(--ink); }
 .calc-tools { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 0 0 26px; }

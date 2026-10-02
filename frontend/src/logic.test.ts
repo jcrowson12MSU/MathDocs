@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { analyze, derivative, integrate } from './mathfn';
+import { analyze, derivative, integrate, variableLatex } from './mathfn';
 import { mathCell, mergeComments, type MathCell, newNotebook, normalize, parseNumber } from './model';
 import { decodeNotebook, encodeNotebook, shareLink } from './share';
 
@@ -31,6 +31,19 @@ describe('analyze', () => {
       expect(r.params).toEqual(['a', 'b']);
       expect(r.f(2, { a: 3, b: 1 })).toBe(7);
     }
+  });
+
+  it('makes sliders for subscripted and Greek variables', () => {
+    const r = analyze('y=a_1x+b_{12}');
+    expect(r.kind).toBe('function');
+    if (r.kind === 'function') {
+      expect(r.params).toEqual(['a_1', 'b_12']);
+      expect(r.f(3, { a_1: 2, b_12: 1 })).toBe(7);
+    }
+    const g = analyze('y=\\alpha x+v_{max}');
+    expect(g.kind === 'function' && g.params).toEqual(['alpha', 'v_max']);
+    expect(variableLatex('b_12')).toBe('b_{12}');
+    expect(variableLatex('alpha')).toBe('\\alpha');
   });
 
   it('returns NaN outside the domain instead of complex numbers', () => {
