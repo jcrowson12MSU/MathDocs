@@ -12,6 +12,8 @@ import { debounce, h } from '../ui';
 
 const fmt = (n: number) => (Number.isFinite(n) ? String(Math.round(n * 1000) / 1000) : 'undefined');
 const round = (n: number) => Math.round(n * 100) / 100;
+/** Zoom rate for scrolling over a graph: about 10% per mouse-wheel notch (100px of scroll). */
+const ZOOM_PER_PIXEL = 0.001;
 
 interface PanelOptions {
   readOnly: boolean;
@@ -142,6 +144,7 @@ class GraphCard {
       }
     });
     this.resizeObserver.observe(this.boardDiv);
+    this.boardDiv.addEventListener('wheel', this.onWheel, { passive: false });
   }
 
   private showAxisLabels(): void {
@@ -413,7 +416,8 @@ class GraphCard {
       showCopyright: false,
       showNavigation: true,
       pan: { enabled: true, needShift: false, needTwoFingers: true },
-      zoom: { wheel: true, needShift: false, factorX: 1.2, factorY: 1.2 },
+      // Wheel zooming is handled by onWheel (proportional to scroll distance); keep the +/− buttons and pinch.
+      zoom: { wheel: false, needShift: false, factorX: 1.2, factorY: 1.2 },
     } as any);
     this.board = board;
     const syncers: (() => boolean)[] = [];
@@ -558,8 +562,25 @@ class GraphCard {
     this.drawItemLabel(board, item, () => (pts.length ? [pts[0][0] + (x2 - x1) * 0.03, pts[0][1] - (y1 - y2) * 0.06] : [x1, y1]), syncers);
   }
 
+  /**
+   * Zoom around the pointer in proportion to how far you scroll. A trackpad sends many tiny wheel
+   * events and a mouse sends a few big ones; zooming a fixed step per event made trackpads far too fast.
+   */
+  private onWheel = (e: WheelEvent) => {
+    const board = this.board;
+    if (!board) return;
+    e.preventDefault();
+    let px = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaMode === 2 ? e.deltaY * 400 : e.deltaY;
+    if (e.ctrlKey) px *= 5; // a trackpad pinch arrives as small wheel events with Ctrl held
+    const k = Math.exp(Math.max(-150, Math.min(150, px)) * ZOOM_PER_PIXEL); // > 1 zooms out
+    const [x, y] = board.getUsrCoordsOfMouse(e);
+    const [x1, y1, x2, y2] = board.getBoundingBox();
+    board.setBoundingBox([x + (x1 - x) * k, y + (y1 - y) * k, x + (x2 - x) * k, y + (y2 - y) * k], false);
+  };
+
   destroy(): void {
     this.resizeObserver.disconnect();
+    this.boardDiv.removeEventListener('wheel', this.onWheel);
     this.saveBbox.flush();
     if (this.board) JXG.JSXGraph.freeBoard(this.board);
     this.board = null;
