@@ -11,7 +11,7 @@ import {
 } from '../model';
 import { loadSettings, saveSettings, shareBase } from '../settings';
 import { shareLink } from '../share';
-import { confirm, debounce, downloadJson, h, prompt, relativeTime, showDialog, toast } from '../ui';
+import { confirm, debounce, downloadJson, h, openMenu, prompt, relativeTime, showDialog, toast } from '../ui';
 import { GraphPanel } from './graphs';
 import { focusable } from './mathfield';
 import { WorkRow, hasRelation, leftSideEnd } from './workrow';
@@ -54,6 +54,9 @@ export class NotebookView {
   private statusEl = h('span', { class: 'save-status' });
   private graphs: GraphPanel;
   private graphsOpen: boolean;
+  /** The work column collapsed so the graphs use the whole width. */
+  private workHidden = false;
+  private mainEl = h('div', { class: 'nb-main' });
   private readOnly: boolean;
   private saving: Promise<void> = Promise.resolve();
   private failed = false;
@@ -88,9 +91,11 @@ export class NotebookView {
   // -- layout ----------------------------------------------------------------
 
   private render(): void {
-    const main = h('div', { class: 'nb-main' }, h('div', { class: 'work' }, this.banner(), this.cellsEl), this.graphs.el);
-    main.classList.toggle('graphs-open', this.graphsOpen);
-    this.el.replaceChildren(this.header(), main);
+    this.mainEl.replaceChildren(h('div', { class: 'work' }, this.banner(), this.cellsEl), this.splitter(), this.graphs.el);
+    const saved = loadSettings().graphsWidth;
+    if (saved) this.mainEl.style.setProperty('--graphs-w', `${saved}px`);
+    this.applyLayout();
+    this.el.replaceChildren(this.header(), this.mainEl);
     this.cellsEl.replaceChildren();
     this.views.clear();
     this.nb.cells.forEach((c) => this.cellsEl.append(this.makeCell(c).el));
@@ -154,9 +159,72 @@ export class NotebookView {
   }
 
   private toggleGraphs(): void {
-    this.graphsOpen = !this.graphsOpen;
-    this.el.querySelector('.nb-main')?.classList.toggle('graphs-open', this.graphsOpen);
+    this.setLayout(!this.graphsOpen, false);
+  }
+
+  private setLayout(graphsOpen: boolean, workHidden: boolean): void {
+    this.graphsOpen = graphsOpen;
+    // The work can only be collapsed while the graphs are showing (something has to fill the page).
+    this.workHidden = workHidden && graphsOpen;
+    this.applyLayout();
     if (this.graphsOpen) requestAnimationFrame(() => this.graphs.refresh());
+  }
+
+  private applyLayout(): void {
+    this.mainEl.classList.toggle('graphs-open', this.graphsOpen);
+    this.mainEl.classList.toggle('work-hidden', this.workHidden);
+  }
+
+  /**
+   * The bar between the work and the graphs: drag it to resize (double-click resets), and use its
+   * buttons to collapse either side. A collapsed side leaves the bar with a button to bring it back.
+   */
+  private splitter(): HTMLElement {
+    const btn = (cls: string, title: string, text: string, run: () => void) =>
+      h('button', {
+        class: `split-btn ${cls}`, title,
+        onclick: (e: Event) => {
+          e.stopPropagation();
+          run();
+        },
+      }, text);
+    const bar = h('div', { class: 'splitter', role: 'separator', 'aria-orientation': 'vertical', title: 'Drag to resize · double-click to reset' },
+      btn('hide-work', 'Collapse the work', '◀', () => this.setLayout(true, true)),
+      btn('hide-graphs', 'Collapse the graphs', '▶', () => this.setLayout(false, false)),
+      btn('show-graphs', 'Show graphs', '◀', () => this.setLayout(true, false)),
+      btn('show-work', 'Show the work', '▶', () => this.setLayout(true, false)),
+    );
+    bar.addEventListener('dblclick', (e) => {
+      if ((e.target as HTMLElement).closest('.split-btn')) return;
+      this.mainEl.style.removeProperty('--graphs-w');
+      const s = loadSettings();
+      delete s.graphsWidth;
+      saveSettings(s);
+    });
+    bar.addEventListener('pointerdown', (e) => {
+      if ((e.target as HTMLElement).closest('.split-btn') || !this.graphsOpen || this.workHidden || e.button !== 0) return;
+      e.preventDefault();
+      bar.setPointerCapture(e.pointerId);
+      this.mainEl.classList.add('resizing');
+      let width = 0;
+      const move = (ev: PointerEvent) => {
+        const box = this.mainEl.getBoundingClientRect();
+        // Keep both sides usable: at least 300px of graphs and 360px of work.
+        width = Math.round(Math.min(Math.max(box.right - ev.clientX, 300), box.width - 360));
+        this.mainEl.style.setProperty('--graphs-w', `${width}px`);
+      };
+      const up = () => {
+        bar.removeEventListener('pointermove', move);
+        bar.removeEventListener('pointerup', up);
+        bar.removeEventListener('pointercancel', up);
+        this.mainEl.classList.remove('resizing');
+        if (width) saveSettings({ ...loadSettings(), graphsWidth: width });
+      };
+      bar.addEventListener('pointermove', move);
+      bar.addEventListener('pointerup', up);
+      bar.addEventListener('pointercancel', up);
+    });
+    return bar;
   }
 
   private toggleKeyboard(): void {
@@ -370,27 +438,42 @@ export class NotebookView {
     };
     this.renderComments(cell, commentsEl, commentBtn, false, closeComments);
 
-    const actions = h('div', { class: 'cell-actions' },
-      commentBtn,
-      cell.type === 'math' && !this.readOnly
-        ? h('button', {
-            class: 'icon work-btn', title: 'Do the same thing to both sides, written under this step (Shift+↓)',
-            onclick: () => content.openWork?.(),
-          }, '±')
-        : null,
-      cell.type === 'math' && !this.readOnly
-        ? h('button', {
-            class: 'icon', title: 'Graph this step',
-            onclick: () => {
-              if (!this.graphsOpen) this.toggleGraphs();
-              this.graphs.addExpression(cell.latex);
-            },
-          }, '📈')
-        : null,
-      this.readOnly ? null : h('button', { class: 'icon', title: 'Move up (Alt+↑)', onclick: () => this.moveCell(cell.id, -1) }, '↑'),
-      this.readOnly ? null : h('button', { class: 'icon', title: 'Move down (Alt+↓)', onclick: () => this.moveCell(cell.id, 1) }, '↓'),
-      this.readOnly ? null : h('button', { class: 'icon', title: 'Delete', onclick: () => this.deleteCell(cell.id, false) }, '✕'),
-    );
+    // The comment count stays visible when there are comments; every other action is in the ⋯ menu.
+    const menuBtn = h('button', { class: 'icon menu-btn', title: 'More actions', 'aria-haspopup': 'menu' }, '⋯');
+    menuBtn.addEventListener('click', () => {
+      const at = () => this.index(cell.id) + 1;
+      const isMath = cell.type === 'math';
+      const edit = !this.readOnly;
+      openMenu(menuBtn, [
+        { label: '💬  Comment', hint: '⌘/  ⌥/', run: () => setCommentsOpen(true) },
+        isMath && edit && hasRelation(cell.latex)
+          ? { label: '±  Same to both sides', hint: 'Shift+↓', run: () => content.openWork?.() }
+          : null,
+        isMath && edit && cell.latex.trim()
+          ? {
+              label: '📈  Graph this step',
+              run: () => {
+                if (!this.graphsOpen) this.toggleGraphs();
+                this.graphs.addExpression(cell.latex);
+              },
+            }
+          : null,
+        ...(edit
+          ? [
+              null,
+              { label: 'Add step below', run: () => this.insertCell(at(), mathCell()) },
+              { label: 'Add text below', hint: '⌥↵', run: () => this.insertCell(at(), textCell()) },
+              { label: 'Add divider below', hint: '⌥H', run: () => this.insertCell(at(), dividerCell()) },
+              null,
+              { label: 'Move up', hint: '⌥↑', run: () => this.moveCell(cell.id, -1) },
+              { label: 'Move down', hint: '⌥↓', run: () => this.moveCell(cell.id, 1) },
+              null,
+              { label: 'Delete', run: () => this.deleteCell(cell.id, false), danger: true },
+            ]
+          : []),
+      ]);
+    });
+    const actions = h('div', { class: 'cell-actions' }, commentBtn, menuBtn);
 
     const inserter = this.readOnly ? null : h('div', { class: 'inserter' },
       h('button', { onclick: () => this.insertCell(this.index(cell.id) + 1, mathCell()) }, '+ Step'),

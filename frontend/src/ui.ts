@@ -139,6 +139,80 @@ export function debounce<T extends (...a: any[]) => void>(fn: T, ms: number): T 
   return d;
 }
 
+export interface MenuItem {
+  label: string;
+  /** Keyboard shortcut shown on the right. */
+  hint?: string;
+  run: () => void;
+  danger?: boolean;
+}
+
+let closeOpenMenu: (() => void) | null = null;
+
+/** A small popup menu under `anchor`. `null` entries draw a separator. Closes on outside click or Esc. */
+export function openMenu(anchor: HTMLElement, items: (MenuItem | null)[]): void {
+  closeOpenMenu?.();
+  const buttons: HTMLButtonElement[] = [];
+  const menu = h('div', { class: 'menu', role: 'menu' });
+  for (const item of items) {
+    if (!item) {
+      if (menu.lastElementChild && !menu.lastElementChild.classList.contains('menu-sep')) menu.append(h('div', { class: 'menu-sep' }));
+      continue;
+    }
+    const b = h('button', {
+      class: item.danger ? 'menu-item danger' : 'menu-item', role: 'menuitem',
+      onclick: () => {
+        close(false);
+        item.run();
+      },
+    }, h('span', {}, item.label), item.hint ? h('span', { class: 'menu-hint' }, item.hint) : null);
+    buttons.push(b);
+    menu.append(b);
+  }
+  if (menu.lastElementChild?.classList.contains('menu-sep')) menu.lastElementChild.remove();
+
+  const onPointer = (e: PointerEvent) => {
+    if (!menu.contains(e.target as Node) && e.target !== anchor && !anchor.contains(e.target as Node)) close(false);
+  };
+  const onKey = (e: KeyboardEvent) => {
+    const i = buttons.indexOf(document.activeElement as HTMLButtonElement);
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      close(true);
+    } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const n = buttons.length;
+      const down = e.key === 'ArrowDown';
+      const next = i < 0 ? (down ? 0 : n - 1) : (i + (down ? 1 : -1) + n) % n;
+      buttons[next]?.focus();
+    }
+  };
+  function close(refocus: boolean) {
+    menu.remove();
+    anchor.classList.remove('menu-open');
+    document.removeEventListener('pointerdown', onPointer, true);
+    document.removeEventListener('keydown', onKey, true);
+    window.removeEventListener('resize', closeNow);
+    if (closeOpenMenu === closeNow) closeOpenMenu = null;
+    if (refocus) anchor.focus();
+  }
+  const closeNow = () => close(false);
+  closeOpenMenu = closeNow;
+
+  document.body.append(menu);
+  anchor.classList.add('menu-open');
+  // Right-align under the button, flipping above it if there's no room below.
+  const r = anchor.getBoundingClientRect();
+  const m = menu.getBoundingClientRect();
+  const top = r.bottom + 4 + m.height > window.innerHeight ? r.top - 4 - m.height : r.bottom + 4;
+  menu.style.top = `${Math.max(4, top)}px`;
+  menu.style.left = `${Math.max(4, Math.min(r.right - m.width, window.innerWidth - m.width - 4))}px`;
+  document.addEventListener('pointerdown', onPointer, true);
+  document.addEventListener('keydown', onKey, true);
+  window.addEventListener('resize', closeNow);
+  buttons[0]?.focus();
+}
+
 export function relativeTime(iso: string): string {
   const then = new Date(iso).getTime();
   const s = Math.round((Date.now() - then) / 1000);

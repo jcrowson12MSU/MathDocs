@@ -7,6 +7,8 @@ export interface Settings {
   author: string;
   /** Where share links point, e.g. https://you.github.io/MathDocs/. Empty means this app. */
   shareBase: string;
+  /** Width of the graph panel in pixels, set by dragging the divider. Unset means the default. */
+  graphsWidth?: number;
 }
 
 export function loadSettings(): Settings {

@@ -85,14 +85,28 @@ A divider is a section title, like a Markdown heading. Add one with **Option+H**
 cells). Click **▾** to collapse everything under it, down to the next divider. Collapsed sections stay
 collapsed when you reopen the notebook, and they open again when you move into them.
 
+### The ⋯ menu
+
+Hover over a cell and click **⋯** on its right for everything you can do with it: comment, ± (same to both
+sides), graph the step, add a step, text or divider below, move it up or down, or delete it. Each item shows
+its keyboard shortcut.
+
 ## Comments
 
-Click 💬 next to any step or text cell, or press **⌘ /** (**Option /** in Safari), to leave a comment. You enter your name the first time,
-and it's saved in the browser. Comments are stored in the notebook file.
+Choose **Comment** in a cell's ⋯ menu, or press **⌘ /** (**Option /** in Safari), to leave a comment. You enter
+your name the first time, and it's saved in the browser. Comments are stored in the notebook file. A cell
+with comments shows a 💬 count on its right; click it to open them.
+
+## Layout
+
+The work is on the left and the graphs on the right, with a divider between them. **Drag the divider** to
+make either side wider (double-click it to reset); the width is remembered. The divider's **◀ / ▶** buttons
+collapse either side so the other uses the whole window, and the same spot shows a button to bring it back.
+**📈 Graphs** at the top also shows or hides the graphs.
 
 ## Graphs
 
-Click 📈 on a step to graph it, or open **📈 Graphs → + Add graph**. Each graph can hold:
+Choose **Graph this step** in a step's ⋯ menu, or open **📈 Graphs → + Add graph**. Each graph can hold:
 
 - **Expressions**: `y = 2x + 1`, `x^2 - 4`, `f(x) = \sin x`, `x = 3`, circles and other implicit
   curves (`x^2 + y^2 = 25`). Any other variable gets a slider, including subscripted and Greek ones
