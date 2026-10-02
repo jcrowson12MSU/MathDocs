@@ -73,6 +73,12 @@ Each copy sits centered under a term. To line it up with a different term, **dra
 under the nearest term on its own side of the =), or press **Option+← / →**. **Esc** or **Shift+↑** goes back
 to the step, and **Enter** goes on to the next step. ± only appears on steps with an =, <, >, ≤, ≥ or ≠.
 
+The next step's gray suggestion is the **result** of the operation, simplified: after `−3` under
+`2x + 3 = 5x − 8`, Enter suggests `2x = 5x − 11` (press **→** to use it, or just type your own step).
+Start the operation with `+` or `−` to add or subtract, `·` (or `*`) to multiply, or `÷` (or `/`) to divide.
+Mixed numbers like 2½ (typed `2` then `1/2`) are understood, and multiplying or dividing an inequality
+by a negative number flips it.
+
 ### Dividers
 
 A divider is a section title, like a Markdown heading. Add one with **Option+H** or **+ Divider** (hover between

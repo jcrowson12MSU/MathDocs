@@ -93,6 +93,101 @@ export function variableLatex(name: string): string {
   return ce.box(name).latex;
 }
 
+// ---- doing the same thing to both sides -------------------------------------------------
+
+const RELATION_COMMANDS = new Set(['\\le', '\\ge', '\\leq', '\\geq', '\\ne', '\\neq', '\\lt', '\\gt', '\\approx']);
+/** The relation you get after multiplying or dividing both sides by a negative number. */
+const FLIPPED: Record<string, string> = {
+  '<': '>', '>': '<', '\\lt': '\\gt', '\\gt': '\\lt', '\\le': '\\ge', '\\ge': '\\le', '\\leq': '\\geq', '\\geq': '\\leq',
+};
+
+/**
+ * Students write 2½x as 2\frac12x. Read a whole number written right before a number-over-number
+ * fraction as a mixed number (Compute Engine would otherwise multiply: 2·½·x).
+ */
+export function mixedNumbers(latex: string): string {
+  const num = String.raw`(\d|\{\d+\})`;
+  return latex.replace(new RegExp(String.raw`(^|[^\d.}^_])(\d+)\\frac${num}${num}`, 'g'), (_m, pre, whole, a, b) =>
+    `${pre}\\left(${whole}+\\frac{${a.replace(/[{}]/g, '')}}{${b.replace(/[{}]/g, '')}}\\right)`,
+  );
+}
+
+/** Split a step at its one top-level relation: "2x+3=5x-8" → ["2x+3", "=", "5x-8"]. */
+export function splitRelation(latex: string): [string, string, string] | null {
+  let depth = 0;
+  let found: [number, number, string] | null = null;
+  for (let i = 0; i < latex.length; i++) {
+    const ch = latex[i];
+    if (ch === '{') depth++;
+    else if (ch === '}') depth--;
+    else if (depth > 0) continue;
+    else if (ch === '=' || ch === '<' || ch === '>') {
+      if (found) return null;
+      found = [i, i + 1, ch];
+    } else if (ch === '\\') {
+      const name = /^\\[a-zA-Z]+/.exec(latex.slice(i))?.[0] ?? '\\';
+      if (RELATION_COMMANDS.has(name)) {
+        if (found) return null;
+        found = [i, i + name.length, name];
+      }
+      i += name.length - 1;
+    }
+  }
+  if (!found) return null;
+  const [start, end, rel] = found;
+  const left = latex.slice(0, start).trim();
+  const right = latex.slice(end).trim();
+  return left && right ? [left, rel, right] : null;
+}
+
+function hasError(json: unknown): boolean {
+  return Array.isArray(json) && (json[0] === 'Error' || json.slice(1).some(hasError));
+}
+
+/**
+ * The step you get by doing `operation` to both sides of `step`, simplified:
+ * "2x+3=5x-8" with "-3" → "2x=5x-11"; "\frac23x=8" with "\cdot\frac32" → "x=12".
+ * Operations start with + or − (add), ·, × or * (multiply), or ÷ or / (divide).
+ * Returns null when it can't be done reliably (no single relation, unclear operation, …).
+ */
+export function applyOperation(step: string, operation: string): string | null {
+  const sides = splitRelation(step);
+  const op = operation.trim();
+  if (!sides || !op) return null;
+  const [left, , right] = sides;
+  let rel = sides[1];
+
+  let kind: 'Add' | 'Multiply' | 'Divide';
+  let amountLatex: string;
+  const m = /^(\\cdot|\\times|\*|\\div|\/)\s*/.exec(op);
+  if (m) {
+    kind = m[1] === '\\div' || m[1] === '/' ? 'Divide' : 'Multiply';
+    amountLatex = op.slice(m[0].length);
+  } else if (op.startsWith('+') || op.startsWith('-')) {
+    kind = 'Add';
+    amountLatex = op;
+  } else return null;
+
+  const amount = ce.parse(mixedNumbers(amountLatex));
+  if (!amountLatex || hasError(amount.json)) return null;
+
+  if (kind !== 'Add' && rel in FLIPPED) {
+    // Multiplying or dividing an inequality by a negative number flips it; we need to know the sign.
+    const value = amount.N().valueOf();
+    if (typeof value !== 'number' || !Number.isFinite(value) || value === 0) return null;
+    if (value < 0) rel = FLIPPED[rel];
+  }
+
+  const apply = (side: string): string | null => {
+    const s = ce.parse(mixedNumbers(side));
+    if (hasError(s.json)) return null;
+    return ce.box([kind, s.json, amount.json]).simplify().latex;
+  };
+  const l = apply(left);
+  const r = apply(right);
+  return l && r ? `${l}${rel}${r}` : null;
+}
+
 /** Numerical derivative (central difference). */
 export function derivative(f: (x: number) => number): (x: number) => number {
   return (x) => {

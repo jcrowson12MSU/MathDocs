@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { analyze, derivative, integrate, variableLatex } from './mathfn';
+import { analyze, applyOperation, derivative, integrate, mixedNumbers, splitRelation, variableLatex } from './mathfn';
 import { mathCell, mergeComments, type MathCell, newNotebook, normalize, parseNumber } from './model';
 import { decodeNotebook, encodeNotebook, shareLink } from './share';
 import { columnAt, groupTerms, hasRelation, nearestColumn, type Atom } from './views/workrow';
@@ -114,6 +114,57 @@ describe('analyze', () => {
     expect(analyze('')).toEqual({ kind: 'empty' });
     expect(analyze('x<3').kind).toBe('error');
     expect(analyze('x+y').kind).toBe('error');
+  });
+});
+
+describe('doing the same thing to both sides', () => {
+  /** Check a suggested step by value: both sides must agree with the expected equation at a few x values. */
+  const sameAt = (got: string | null, expected: string, xs = [-2, 0.5, 3]) => {
+    expect(got).not.toBeNull();
+    const [gl, , gr] = splitRelation(got!)!;
+    const [el, , er] = splitRelation(expected)!;
+    for (const x of xs) {
+      const at = (s: string) => {
+        const r = analyze(mixedNumbers(s));
+        return r.kind === 'function' ? r.f(x, {}) : NaN;
+      };
+      expect(at(gl)).toBeCloseTo(at(el), 9);
+      expect(at(gr)).toBeCloseTo(at(er), 9);
+    }
+  };
+
+  it('subtracts from both sides and simplifies', () => {
+    expect(applyOperation('2x+3=5x-8', '-3')).toBe('2x=5x-11');
+    expect(applyOperation('y+5=x+3', '-5')).toBe('y=x-2');
+    expect(applyOperation('2x=5x-11', '-5x')).toBe('-3x=-11');
+  });
+
+  it('multiplies and divides both sides', () => {
+    expect(applyOperation('\\frac23x=8', '\\cdot\\frac32')).toBe('x=12');
+    expect(applyOperation('2x=8', '\\div2')).toBe('x=4');
+    expect(applyOperation('3\\left(x+2\\right)=12', '\\div3')).toBe('x+2=4');
+    expect(applyOperation('-\\frac53x=10', '\\cdot\\left(-\\frac35\\right)')).toBe('x=-6');
+  });
+
+  it('reads mixed numbers the way students write them', () => {
+    expect(mixedNumbers('2\\frac12x')).toBe('\\left(2+\\frac{1}{2}\\right)x');
+    expect(mixedNumbers('x^2\\frac12')).toBe('x^2\\frac12'); // an exponent, not a mixed number
+    expect(mixedNumbers('2\\frac{x}{3}')).toBe('2\\frac{x}{3}'); // not number-over-number
+    // From "Systems of Equations": 5/6 x + 15 = 2½x + 25, subtract 15
+    sameAt(applyOperation('\\frac56x+15=2\\frac12x+25', '-15'), '\\frac56x=2.5x+10');
+  });
+
+  it('flips an inequality when multiplying or dividing by a negative', () => {
+    expect(applyOperation('-2x<8', '\\div\\left(-2\\right)')).toBe('x>-4');
+    expect(applyOperation('x+3\\le5', '-3')).toBe('x\\le2');
+    expect(applyOperation('2x\\ge6', '\\div2')).toBe('x\\ge3');
+  });
+
+  it('gives up when it is unclear', () => {
+    expect(applyOperation('2x+3', '-3')).toBeNull(); // no relation
+    expect(applyOperation('a=b=c', '-1')).toBeNull(); // two relations
+    expect(applyOperation('2x=8', '3')).toBeNull(); // no operation sign
+    expect(applyOperation('ax<8', '\\div a')).toBeNull(); // unknown sign for an inequality
   });
 });
 

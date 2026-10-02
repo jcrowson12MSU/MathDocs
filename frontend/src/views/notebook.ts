@@ -4,6 +4,7 @@ import { MathfieldElement } from 'mathlive';
 import { api } from '../api';
 import { saveIncoming } from '../incoming';
 import { renderMarkdown } from '../markdown';
+import { applyOperation } from '../mathfn';
 import {
   dividerCell, mathCell, newId, nowIso, textCell,
   type Cell, type DividerCell, type MathCell, type Notebook, type TextCell,
@@ -282,16 +283,19 @@ export class NotebookView {
     const i = this.index(id);
     const cell = this.nb.cells[i];
     const latex = cell.type === 'math' ? cell.latex : '';
+    // With an operation under the step (e.g. −3 under both sides), suggest its simplified result.
+    const op = cell.type === 'math' ? cell.operation?.latex : undefined;
+    const suggestion = (op && applyOperation(latex, op)) || latex;
     const next = this.nb.cells[i + 1];
     if (!copy && next?.type === 'math' && !next.latex.trim()) {
-      this.views.get(next.id)?.suggest?.(latex);
+      this.views.get(next.id)?.suggest?.(suggestion);
       this.focusAt(i + 1, 'start');
       return;
     }
     const added = mathCell(copy ? latex : '');
     this.insertCell(i + 1, added);
     if (copy) this.focusAt(i + 1, 'end');
-    else this.views.get(added.id)?.suggest?.(latex);
+    else this.views.get(added.id)?.suggest?.(suggestion);
   }
 
   /** Step numbers restart after each text cell or divider, so each problem counts from 1. */
@@ -868,7 +872,7 @@ export class NotebookView {
 
 export function showHelp(): void {
   const rows: [string, string][] = [
-    ['Enter', 'Next step, with this step shown in gray as a starting point'],
+    ['Enter', 'Next step, with this step (or the result of its ± operation) shown in gray as a starting point'],
     ['→ on a gray suggestion', 'Accept it and edit from there (or just type to start fresh)'],
     ['Shift + Enter', 'New step that starts as a copy of this one'],
     ['↑ / ↓', 'Move between steps'],
