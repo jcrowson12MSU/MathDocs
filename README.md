@@ -45,7 +45,7 @@ Each step is a live math editor ([MathLive](https://mathlive.io)). Type the way 
 | **Shift+Enter** | new step that starts as a copy of this one |
 | **↑ / ↓** | move between steps (inside a fraction, these move between its top and bottom) |
 | **Backspace** on an empty step | delete it |
-| **Shift+↓** | write work under this step (see below). **Esc** or **Shift+↑** goes back to the step |
+| **Shift+↓** (or **±**) | do the same thing to both sides, written under the step (see below). **Esc** or **Shift+↑** goes back to the step |
 | **Alt+Enter** | add a text cell below |
 | **Option+H** (Alt+H) | add a divider (a section title) below |
 | **Alt+↑ / ↓** | move a cell up or down |
@@ -58,17 +58,20 @@ Click **⌨︎ Keyboard** for an on-screen math keyboard.
 
 ### Writing work under a step
 
-To show what you're doing to both sides, write it directly under the step:
+To show what you're doing to both sides, write it directly under the step, inside its box:
 
 ```
 y + 5 = x + 3
-  − 5     − 5
+ − 5      − 5
 ```
 
-Put the cursor on a term (for example just after `+5`) and press **Shift+↓**, or click **±** next to the step.
-A row of boxes opens, one under each term, with the cursor in the box under that term. Type `-5`, then press
-**→** to move along to the box under `+3`. The work is drawn in blue and stays lined up with the terms
-if the step changes. **Enter** goes on to the next step.
+Click **±** next to the step, or put the cursor on a term (for example just after `+5`) and press **Shift+↓**.
+Type the operation once, e.g. `-5`. It appears in red under **both** sides, and the two copies always match:
+editing either one changes the other. **→ / ←** switch between the copies.
+
+Each copy sits centered under a term. To line it up with a different term, **drag it left or right** (it snaps
+under the nearest term on its own side of the =), or press **Option+← / →**. **Esc** or **Shift+↑** goes back
+to the step, and **Enter** goes on to the next step. ± only appears on steps with an =, <, >, ≤, ≥ or ≠.
 
 ### Dividers
 

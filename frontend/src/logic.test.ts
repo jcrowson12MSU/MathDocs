@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { analyze, derivative, integrate, variableLatex } from './mathfn';
 import { mathCell, mergeComments, type MathCell, newNotebook, normalize, parseNumber } from './model';
 import { decodeNotebook, encodeNotebook, shareLink } from './share';
-import { columnAt, groupTerms, type Atom } from './views/workrow';
+import { columnAt, groupTerms, hasRelation, nearestColumn, type Atom } from './views/workrow';
 
 /** Fake measured atoms: each token 10px wide; null = nested inside the previous atom. */
 const atoms = (...tokens: (string | null)[]): (Atom | null)[] =>
@@ -29,6 +29,30 @@ describe('work row terms', () => {
     expect(columnAt(cols, 0)).toBe(0);
     expect(columnAt(cols, 3)).toBe(1); // after "+5"
     expect(columnAt(cols, 7)).toBe(3); // after "+3"
+  });
+
+  it('knows which side of the = each term is on', () => {
+    const cols = groupTerms(atoms('y', '+', '5', '=', 'x', '+', '3'));
+    expect(cols.map((c) => c.side)).toEqual([0, 0, 1, 1]);
+  });
+
+  it('snaps a dragged copy to the nearest term on its own side', () => {
+    // centers: y=5, +5=25, x=45, +3=65
+    const cols = groupTerms(atoms('y', '+', '5', '=', 'x', '+', '3'));
+    expect(nearestColumn(cols, 'left', 4)).toBe(0);
+    expect(nearestColumn(cols, 'left', 22)).toBe(1);
+    expect(nearestColumn(cols, 'left', 70)).toBe(1); // can't cross to the right side
+    expect(nearestColumn(cols, 'right', 60)).toBe(3);
+    expect(nearestColumn(cols, 'right', 0)).toBe(2);
+  });
+
+  it('only offers ± on steps with two sides', () => {
+    expect(hasRelation('y+5=x+3')).toBe(true);
+    expect(hasRelation('2x\\le8')).toBe(true);
+    expect(hasRelation('x>3')).toBe(true);
+    expect(hasRelation('2\\left(x+3\\right)+4')).toBe(false);
+    expect(hasRelation('\\frac{a=b}{2}')).toBe(false); // nested, not top level
+    expect(hasRelation('\\left(x\\right)\\leq1')).toBe(true);
   });
 });
 
@@ -114,14 +138,20 @@ describe('model', () => {
       title: 'HW',
       cells: [
         { type: 'divider', title: 'Problem 1', collapsed: true },
+        { type: 'math', latex: 'y+5=x+3', operation: { latex: '-5', left: 1, right: 3 } },
+        { type: 'math', latex: 'x=1', operation: { latex: '  ' } },
+        // The earlier format: one entry per term.
         { type: 'math', latex: 'y+5=x+3', work: ['', '-5', '', '-5'] },
-        { type: 'math', latex: 'x=1', work: ['', ''] },
+        { type: 'math', latex: '2x=8', work: ['\\div2'] },
       ],
       graphs: [{ xLabel: 'hours', yLabel: 'cm', items: [{ kind: 'note', text: 'meet', pos: [1, 2] }, { kind: 'bogus' }] }],
     });
     expect(nb.cells[0]).toMatchObject({ type: 'divider', title: 'Problem 1', collapsed: true });
-    expect((nb.cells[1] as MathCell).work).toEqual(['', '-5', '', '-5']);
-    expect((nb.cells[2] as MathCell).work).toBeUndefined();
+    expect((nb.cells[1] as MathCell).operation).toEqual({ latex: '-5', left: 1, right: 3 });
+    expect((nb.cells[2] as MathCell).operation).toBeUndefined();
+    expect((nb.cells[3] as MathCell).operation).toEqual({ latex: '-5', left: 1, right: 3 });
+    expect((nb.cells[4] as MathCell).operation).toEqual({ latex: '\\div2', left: 0, right: undefined });
+    expect(nb.cells[3]).not.toHaveProperty('work');
     expect(nb.graphs[0]).toMatchObject({ xLabel: 'hours', yLabel: 'cm' });
     expect(nb.graphs[0].items.map((i) => i.kind)).toEqual(['note']);
   });

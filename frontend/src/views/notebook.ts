@@ -13,7 +13,7 @@ import { shareLink } from '../share';
 import { confirm, debounce, downloadJson, h, prompt, relativeTime, showDialog, toast } from '../ui';
 import { GraphPanel } from './graphs';
 import { focusable } from './mathfield';
-import { WorkRow } from './workrow';
+import { WorkRow, hasRelation, leftSideEnd } from './workrow';
 
 export type Mode = { kind: 'file'; name: string } | { kind: 'scratch' } | { kind: 'shared' };
 
@@ -256,7 +256,7 @@ export class NotebookView {
     this.changed();
     if (focusPrev) this.focusAt(Math.max(0, i - 1), 'end');
     const hasContent =
-      cell.type === 'math' ? cell.latex.trim() || cell.work?.length : cell.type === 'markdown' ? cell.text.trim() : cell.title.trim();
+      cell.type === 'math' ? cell.latex.trim() || cell.operation : cell.type === 'markdown' ? cell.text.trim() : cell.title.trim();
     if (hasContent || cell.comments.length) {
       toast('Cell deleted.', { label: 'Undo', run: () => this.insertCell(Math.min(i, this.nb.cells.length), cell) }, 6000);
     }
@@ -370,7 +370,7 @@ export class NotebookView {
       commentBtn,
       cell.type === 'math' && !this.readOnly
         ? h('button', {
-            class: 'icon', title: 'Write work under this step (Shift+↓)',
+            class: 'icon work-btn', title: 'Do the same thing to both sides, written under this step (Shift+↓)',
             onclick: () => content.openWork?.(),
           }, '±')
         : null,
@@ -434,9 +434,13 @@ export class NotebookView {
       cellKeys: (e) => this.cellKeys(e, cell),
     });
 
+    // ± only applies to steps with two sides (an =, <, > …).
+    const updateCanWork = () => el.classList.toggle('can-work', hasRelation(mf.value));
+    updateCanWork();
     mf.addEventListener('input', () => {
       cell.latex = mf.value;
       if (suggestion && mf.value) suggest('');
+      updateCanWork();
       work.scheduleLayout();
       this.changed();
     });
@@ -500,7 +504,7 @@ export class NotebookView {
         // MathLive's input event can trail the last keystroke; read the live value.
         cell.latex = mf.value;
         this.nextStep(cell.id, e.shiftKey);
-      } else if (e.key === 'Backspace' && !mf.value && !cell.work?.length && this.nb.cells.length > 1) {
+      } else if (e.key === 'Backspace' && !mf.value && !cell.operation && this.nb.cells.length > 1) {
         stop();
         this.deleteCell(cell.id);
       }
@@ -513,11 +517,12 @@ export class NotebookView {
       suggest,
       focus,
       openWork: () => {
-        if (!mf.value) {
+        if (!hasRelation(mf.value)) {
           focus('end');
           return;
         }
-        work.openAt(mf.lastOffset);
+        // Start under the last term on the left of the =, the usual place for "−5".
+        work.openAt(leftSideEnd(mf));
       },
     };
   }
@@ -867,8 +872,9 @@ export function showHelp(): void {
     ['Shift + Enter', 'New step that starts as a copy of this one'],
     ['↑ / ↓', 'Move between steps'],
     ['Backspace on an empty step', 'Delete it'],
-    ['Shift + ↓', 'Write work under this step (like −5 under +5); Esc or Shift + ↑ to go back'],
-    ['← / → in the work row', 'Move between the boxes under each term'],
+    ['Shift + ↓  or  ±', 'Do the same to both sides, written under the step (like −5 under +5 and +3); Esc or Shift + ↑ to go back'],
+    ['← / →  under the step', 'Switch between the left and right copy (they always match)'],
+    ['Option + ← / →  under the step', 'Move this copy under the next term (or drag it with the mouse)'],
     ['Alt + Enter', 'Add a text cell below'],
     ['Option + H', 'Add a divider (section title) below; click ▾ to collapse the section'],
     ['Alt + ↑ / ↓', 'Move this cell up or down'],

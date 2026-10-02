@@ -15,12 +15,21 @@ export interface MathCell {
   id: string;
   type: 'math';
   latex: string;
-  /**
-   * Work written under the step, one entry per term of the step (e.g. "-5" under "+5").
-   * Terms are split at top-level + − and relations; see views/workrow.ts.
-   */
-  work?: string[];
+  /** What's being done to both sides, written under the step (e.g. −5 under +5 and under +3). */
+  operation?: Operation;
   comments: Comment[];
+}
+
+/**
+ * One operation shown twice under a step: once under a term on the left of the =, once under
+ * a term on the right. Terms are numbered left to right across the whole step, skipping the
+ * relation, and split at top-level + and − (see views/workrow.ts). A missing index means
+ * "the default term on that side".
+ */
+export interface Operation {
+  latex: string;
+  left?: number;
+  right?: number;
 }
 
 export interface TextCell {
@@ -166,6 +175,26 @@ export function newNotebook(title = 'Untitled'): Notebook {
   };
 }
 
+const termIndex = (v: unknown) => (Number.isInteger(v) && (v as number) >= 0 ? (v as number) : undefined);
+
+/**
+ * Read a step's operation. Also converts the short-lived earlier format, where `work` was a list
+ * with one entry per term (e.g. ["", "-5", "", "-5"]).
+ */
+function normalizeOperation(op: any, legacyWork: unknown): Operation | undefined {
+  if (op && typeof op === 'object' && typeof op.latex === 'string' && op.latex.trim()) {
+    return { latex: op.latex, left: termIndex(op.left), right: termIndex(op.right) };
+  }
+  if (Array.isArray(legacyWork)) {
+    const filled = legacyWork.map((w, i) => [typeof w === 'string' ? w.trim() : '', i] as const).filter(([w]) => w);
+    if (filled.length) {
+      const [first, last] = [filled[0], filled[filled.length - 1]];
+      return { latex: first[0], left: first[1], right: last !== first ? last[1] : undefined };
+    }
+  }
+  return undefined;
+}
+
 /** Accept anything that looks like a notebook (old versions, hand-edited files) and fill in defaults. */
 export function normalize(raw: unknown): Notebook {
   if (!raw || typeof raw !== 'object') throw new Error('Not a math notebook file');
@@ -191,9 +220,8 @@ export function normalize(raw: unknown): Notebook {
         return { id, type: 'divider', title: String(c.title ?? ''), collapsed: !!c.collapsed, comments };
       }
       const math: MathCell = { id, type: 'math', latex: String(c.latex ?? ''), comments };
-      if (Array.isArray(c.work) && c.work.some((w: unknown) => typeof w === 'string' && w.trim())) {
-        math.work = c.work.map((w: unknown) => (typeof w === 'string' ? w : ''));
-      }
+      const op = normalizeOperation(c.operation, c.work);
+      if (op) math.operation = op;
       return math;
     });
   const graphs: Graph[] = Array.isArray(r.graphs)

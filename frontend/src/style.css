@@ -9,7 +9,7 @@
   --danger: #d6336c;
   --comment: #fff6d6;
   --comment-ink: #6b5200;
-  --work: #1c64f2;
+  --work: #e03131;
   --radius: 10px;
   --font: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   color-scheme: light;
@@ -27,7 +27,7 @@
     --danger: #ff6b98;
     --comment: #3a3320;
     --comment-ink: #f0d98a;
-    --work: #8fb3ff;
+    --work: #ff8787;
     color-scheme: dark;
   }
 }
@@ -132,9 +132,21 @@ math-field {
   --placeholder-color: var(--muted);
   --placeholder-opacity: 0.55;
 }
-.cell.math math-field { box-shadow: 0 1px 0 var(--line); }
-.cell.math math-field:hover { border-color: var(--line); }
-.cell.math.focused math-field, math-field:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); outline: none; }
+math-field:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); outline: none; }
+
+/* A step's white box holds the expression and, under it, the operation done to both sides. */
+.step-box {
+  position: relative; background: var(--paper); border: 1px solid transparent; border-radius: 10px;
+  padding: 10px 16px; box-shadow: 0 1px 0 var(--line);
+}
+.step-box:hover { border-color: var(--line); }
+.cell.math.focused .step-box, .step-box:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.step-box > math-field {
+  font-size: 24px; padding: 4px 0; min-height: 40px;
+  border: none !important; box-shadow: none !important; background: transparent;
+}
+.cell.math .gutter { padding-top: 22px; }
+.cell.math:not(.can-work) .work-btn { display: none; }
 math-field::part(menu-toggle) { display: none; }
 math-field::part(virtual-keyboard-toggle) { display: none; }
 math-field[read-only] { box-shadow: none; }
@@ -248,20 +260,22 @@ table.help td { padding: 4px 10px 4px 0; vertical-align: top; }
 .toast .link { color: var(--accent-soft); }
 
 /* ---------- work under a step ---------- */
-.step-box { position: relative; }
-.work-row { position: relative; height: 40px; margin-top: 2px; }
+.work-row { position: relative; height: 44px; }
 .work-row[hidden] { display: none; }
-math-field.work-slot {
+/* Same font and size as the expression above, in red; centered under a term. */
+math-field.work-copy {
   position: absolute; top: 0; transform: translateX(-50%);
-  display: inline-block; width: auto; padding: 2px 3px; font-size: 22px;
-  color: var(--work); background: transparent; box-shadow: none;
-  border: 1px dashed transparent; border-radius: 6px; text-align: center;
+  display: inline-block; width: auto; min-width: 26px; padding: 4px 2px; font-size: 24px;
+  color: var(--work); background: transparent; box-shadow: none !important;
+  border: 1px dashed transparent; border-radius: 6px; cursor: grab;
   --caret-color: var(--work);
+  --placeholder-color: var(--work);
+  --placeholder-opacity: 0.35;
 }
-.work-row:focus-within math-field.work-slot { border-color: var(--line); }
-math-field.work-slot:focus-within { border-color: var(--work) !important; background: var(--paper); }
-math-field.work-slot.orphan { opacity: 0.6; }
-math-field.work-slot[read-only] { border-color: transparent !important; }
+.work-row:focus-within math-field.work-copy { border-color: var(--line); }
+math-field.work-copy:focus-within { border-color: var(--work) !important; }
+math-field.work-copy.dragging { cursor: grabbing; border-color: var(--work); background: var(--paper); z-index: 1; }
+math-field.work-copy[read-only] { cursor: default; border-color: transparent !important; }
 
 /* ---------- dividers ---------- */
 .cell.divider { margin-top: 18px; }
