@@ -207,6 +207,7 @@ export class NotebookView {
   private togglePractice(btn: HTMLElement): void {
     this.nb.practice = this.nb.practice ? undefined : true;
     this.showPractice(btn);
+    this.graphs.render();
     this.graphs.refresh();
     this.changed();
     toast(this.nb.practice

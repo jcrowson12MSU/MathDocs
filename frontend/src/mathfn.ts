@@ -30,6 +30,20 @@ export type Plottable =
   | { kind: 'region'; f: (x: number, p: Params) => number; shade: 'below' | 'above'; inclusive: boolean; params: string[] }
   /** An inequality in x alone (x > 3, x² < 9): shade the vertical bands where it's true. */
   | { kind: 'xbands'; intervals: Interval[] }
+  /** a_n = 1/n: the points (n, a_n) for n = 1, 2, 3 … */
+  | { kind: 'sequence'; a: (n: number, p: Params) => number; params: string[] }
+  /** ⟨3, 4⟩ (or \vec{v} = ⟨3, 4⟩): an arrow from the origin. */
+  | { kind: 'vector'; x: (p: Params) => number; y: (p: Params) => number; name: string; params: string[] }
+  /** ⟨P(x, y), Q(x, y)⟩: a vector field (or a phase plane for x′ = P, y′ = Q). */
+  | { kind: 'field'; P: (x: number, y: number, p: Params) => number; Q: (x: number, y: number, p: Params) => number; params: string[] }
+  /** dy/dx = f(x, y) (or y′ = f(x, y)): a slope field. */
+  | { kind: 'slopefield'; f: (x: number, y: number, p: Params) => number; params: string[] }
+  /** 3D: z = f(x, y). */
+  | { kind: 'surface'; f: (x: number, y: number, p: Params) => number; params: string[] }
+  /** 3D: (x(t), y(t), z(t)). */
+  | { kind: 'curve3d'; x: (t: number, p: Params) => number; y: (t: number, p: Params) => number; z: (t: number, p: Params) => number; from: number; to: number; params: string[] }
+  /** 3D: (1, 2, 3), or the arrow ⟨1, 2, 3⟩. */
+  | { kind: 'point3d'; at: (p: Params) => [number, number, number]; arrow: boolean; name: string; params: string[] }
   | { kind: 'empty' }
   | { kind: 'error'; message: string };
 
@@ -120,6 +134,8 @@ export function analyze(latex: string, opts: AnalyzeOptions = {}): Plottable {
   if (hasErrors(json)) return { kind: 'error', message: 'Finish typing the expression' };
   if (Array.isArray(json) && INEQUALITIES.has(json[0])) return inequality(latex);
   if (opts.degrees) json = toDegrees(json);
+  const calc = calculusKinds(json, opts);
+  if (calc) return calc;
   const curve = polarOrParametric(json, opts);
   if (curve) return curve;
   if (Array.isArray(json) && json[0] === 'Tuple') return points(json);
@@ -206,6 +222,8 @@ function restricted(main: string, restriction: string, opts: AnalyzeOptions): Pl
     if (!Number.isFinite(from) || !Number.isFinite(to) || from === null || to === null) {
       return { kind: 'error', message: 'Give both ends of the range, like {0 ≤ t ≤ 5}' };
     }
+    const curve3 = Array.isArray(json) && json[0] === 'Tuple' && json.length === 4 ? calculusKinds(json, opts) : null;
+    if (curve3?.kind === 'curve3d') return { ...curve3, from, to };
     return polarOrParametric(json, opts, [from, to]) ?? { kind: 'error', message: `{… ${set.variable} …} restricts polar (r = …) or parametric ((x, y) in t) curves` };
   }
   if (set.variable !== 'x') return { kind: 'error', message: 'Restrict x, like {x < 2}' };
@@ -299,6 +317,88 @@ function verticals(json: Json): Plottable {
     return { kind: 'error', message: 'Couldn’t solve this for x' };
   }
 }
+
+/** The kinds of things graphed in calculus: sequences, vectors and fields, slope fields, and 3D. */
+function calculusKinds(json: Json, opts: AnalyzeOptions): Plottable | null {
+  const head = Array.isArray(json) ? json[0] : null;
+  const fn = (j: Json) => compileJson(j);
+  const bad = (f: unknown): f is string => typeof f === 'string';
+  const params = (j: Json, exclude: string[]) => paramsOf(j, exclude);
+
+  // \vec{v} = ⟨…⟩ names the vector.
+  let name = '';
+  let body = json;
+  if (head === 'Equal' && Array.isArray(json[1]) && json[1][0] === 'OverVector' && typeof json[1][1] === 'string') {
+    name = json[1][1];
+    body = json[2];
+  }
+  if (Array.isArray(body) && body[0] === 'AngleBracket') {
+    const parts = body.slice(1);
+    const used = symbolsIn(body);
+    if (parts.length === 2 && (used.has('x') || used.has('y'))) {
+      const [P, Q] = parts.map(fn);
+      if (bad(P)) return { kind: 'error', message: P };
+      if (bad(Q)) return { kind: 'error', message: Q };
+      return { kind: 'field', P: (x, y, p) => P({ ...p, x, y }), Q: (x, y, p) => Q({ ...p, x, y }), params: params(body, ['x', 'y']) };
+    }
+    if (parts.length === 2) {
+      const [X, Y] = parts.map(fn);
+      if (bad(X)) return { kind: 'error', message: X };
+      if (bad(Y)) return { kind: 'error', message: Y };
+      return { kind: 'vector', x: (p) => X(p), y: (p) => Y(p), name, params: params(body, []) };
+    }
+    if (parts.length === 3) {
+      const [X, Y, Z] = parts.map(fn);
+      if (bad(X) || bad(Y) || bad(Z)) return { kind: 'error', message: 'Couldn’t read this vector' };
+      return { kind: 'point3d', at: (p) => [X(p), Y(p), Z(p)], arrow: true, name, params: params(body, []) };
+    }
+    return { kind: 'error', message: 'A vector has 2 or 3 parts, like ⟨3, 4⟩' };
+  }
+
+  if (head === 'Equal' && json.length === 3) {
+    const [, lhs, rhs] = json;
+    // dy/dx = f(x, y) or y′ = f(x, y): a slope field.
+    const isDy = (j: Json) => Array.isArray(j) && ((j[0] === 'D' && JSON.stringify(j).includes('"y"')) || (j[0] === 'Prime' && j[1] === 'y'));
+    if (isDy(lhs) || isDy(rhs)) {
+      const f = fn(isDy(lhs) ? rhs : lhs);
+      if (bad(f)) return { kind: 'error', message: f };
+      return { kind: 'slopefield', f: (x, y, p) => f({ ...p, x, y }), params: params(isDy(lhs) ? rhs : lhs, ['x', 'y']) };
+    }
+    // a_n = …: a sequence.
+    if (typeof lhs === 'string' && /^[a-zA-Z]+_n$/.test(lhs) && !symbolsIn(rhs).has('x')) {
+      const a = fn(rhs);
+      if (bad(a)) return { kind: 'error', message: a };
+      return { kind: 'sequence', a: (n, p) => a({ ...p, n }), params: params(rhs, ['n']) };
+    }
+    // z = f(x, y): a surface (3D graphs).
+    if (lhs === 'z' && !symbolsIn(rhs).has('z')) {
+      const f = fn(rhs);
+      if (bad(f)) return { kind: 'error', message: f };
+      return { kind: 'surface', f: (x, y, p) => f({ ...p, x, y }), params: params(rhs, ['x', 'y']) };
+    }
+  }
+
+  // (x(t), y(t), z(t)) or (1, 2, 3): 3D.
+  if (head === 'Tuple' && json.length === 4) {
+    const [X, Y, Z] = json.slice(1).map(fn);
+    if (bad(X) || bad(Y) || bad(Z)) return { kind: 'error', message: 'Couldn’t read this' };
+    if (symbolsIn(json).has('t')) {
+      const [from, to] = hasTrig(json) ? (opts.degrees ? [0, 360] : [0, 2 * Math.PI]) : [-5, 5];
+      return {
+        kind: 'curve3d', x: (t, p) => X({ ...p, t }), y: (t, p) => Y({ ...p, t }), z: (t, p) => Z({ ...p, t }),
+        from, to, params: params(json, ['t']),
+      };
+    }
+    return { kind: 'point3d', at: (p) => [X(p), Y(p), Z(p)], arrow: false, name: '', params: params(json, []) };
+  }
+  return null;
+}
+
+/** Kinds drawn in a 3D graph. */
+export const THREE_D_KINDS = new Set(['surface', 'curve3d', 'point3d']);
+
+/** Letters that count (the n in a_n or in Σ up to n): their sliders step by 1. */
+export const COUNTING = new Set(['n', 'N', 'm']);
 
 function points(json: Json): Plottable {
   // (1, 2) is a Tuple of two numbers; (1, 2), (3, 4) is a Tuple of Tuples.

@@ -143,6 +143,10 @@ export interface ExprItem {
   area?: { from: number; to: number } | null;
   /** A parent function the student chose (e.g. "x^2"), drawn faintly behind this one. */
   parent?: string | null;
+  /** Riemann-sum rectangles under the curve from `from` to `to`, or null when off. */
+  riemann?: { n: number; from: number; to: number; method: 'left' | 'right' | 'middle' | 'trapezoidal' } | null;
+  /** A secant line through x = a and x = a + h, or null when off. */
+  secant?: { a: number; h: number } | null;
 }
 
 export interface TableItem {
@@ -227,6 +231,10 @@ export interface Graph {
   piTicks?: boolean;
   /** Same scale on both axes (for geometry and circles). */
   square?: boolean;
+  /** A rotatable 3D graph (z = f(x, y), space curves, points and vectors). */
+  view?: '3d';
+  /** 3D: each axis runs from −range3d to range3d. */
+  range3d?: number;
 }
 
 export interface Notebook {
@@ -438,6 +446,8 @@ export function normalize(raw: unknown): Notebook {
         ...(g.angles === 'deg' ? { angles: 'deg' } : {}),
         ...(g.piTicks === true ? { piTicks: true } : {}),
         ...(g.square === true ? { square: true } : {}),
+        ...(g.view === '3d' ? { view: '3d' } : {}),
+        ...(Number.isFinite(g.range3d) && g.range3d > 0 ? { range3d: g.range3d } : {}),
         bbox: Array.isArray(g.bbox) && g.bbox.length === 4 && g.bbox.every(Number.isFinite) ? g.bbox : [...DEFAULT_BBOX],
         items: Array.isArray(g.items) ? g.items.filter((i: any) => i && ['expr', 'table', 'note', 'unitcircle', 'construction'].includes(i.kind)) : [],
       }))

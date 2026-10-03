@@ -3,7 +3,8 @@
 import JXG from 'jsxgraph';
 import katex from 'katex';
 import { MathfieldElement } from 'mathlive';
-import { analyze, derivative, integrate, intersections, variableLatex, type Plottable } from '../mathfn';
+import { analyze, COUNTING, derivative, integrate, intersections, THREE_D_KINDS, variableLatex, type Plottable } from '../mathfn';
+import { draw3D, drawField, drawSequence, drawVector } from './calcdraw';
 import {
   COLORS, DEFAULT_BBOX, exprItem, newGraph, newId, nextColor, noteItem, parseNumber, tableItem,
   type ConstructionItem, type ExprItem, type Graph, type GraphItem, type NoteItem, type Notebook, type TableItem,
@@ -168,6 +169,10 @@ class GraphCard {
         this.toggle('Degrees', graph.angles === 'deg', (on) => this.setDegrees(on)),
         this.toggle('π ticks', !!graph.piTicks, (on) => (graph.piTicks = on || undefined)),
         this.toggle('Same scale', !!graph.square, (on) => (graph.square = on || undefined)),
+        this.toggle('3D', graph.view === '3d', (on) => {
+          graph.view = on ? '3d' : undefined;
+          this.renderItems();
+        }),
         this.practiceNote),
       this.itemsEl,
       ro ? null : h('div', { class: 'graph-add' },
@@ -362,7 +367,12 @@ class GraphCard {
 
     const refreshMeta = () => {
       const a = this.analysis(item);
-      msg.textContent = a.kind === 'error' ? a.message : '';
+      const three = this.graph.view === '3d';
+      msg.textContent = a.kind === 'error' ? a.message
+        : a.kind === 'empty' ? ''
+        : three && !THREE_D_KINDS.has(a.kind) ? 'This graph is 3D: write z = f(x, y), (x, y, z) or ⟨a, b, c⟩ (or turn off 3D)'
+        : !three && THREE_D_KINDS.has(a.kind) ? 'Turn on 3D (under the graph) to see this'
+        : '';
       // Sliders for parameters like a, b in y = ax + b.
       const names = 'params' in a ? a.params : [];
       item.params ??= {};
@@ -371,13 +381,24 @@ class GraphCard {
       // Calculus tools only make sense for y = f(x).
       tools.replaceChildren();
       if (a.kind === 'function' && !this.opts.readOnly) {
+        const practice = this.opts.practice?.() ?? false;
         tools.append(
-          this.toggle('f′ derivative', !!item.showDerivative, (on) => (item.showDerivative = on)),
+          ...(practice ? [] : [this.toggle('f′ derivative', !!item.showDerivative, (on) => (item.showDerivative = on))]),
           this.toggle('Slope triangle', item.slopeTriangle != null, (on) => (item.slopeTriangle = on ? { x1: 0, x2: 1 } : null)),
           this.toggle('Tangent line', item.tangentAt != null, (on) => (item.tangentAt = on ? 1 : null)),
           this.toggle('Area under curve', item.area != null, (on) => (item.area = on ? { from: 0, to: 2 } : null)),
+          this.toggle('Riemann sum', item.riemann != null, (on) => {
+            item.riemann = on ? { n: 4, from: 0, to: 2, method: 'left' } : null;
+            refreshMeta();
+          }),
+          this.toggle('Secant line', item.secant != null, (on) => {
+            item.secant = on ? { a: 1, h: 1 } : null;
+            refreshMeta();
+          }),
           this.parentSelect(item),
         );
+        if (item.riemann) tools.append(this.riemannControls(item));
+        if (item.secant) tools.append(this.secantControls(item));
       }
     };
 
@@ -393,6 +414,51 @@ class GraphCard {
       h('div', { class: 'item-line' }, swatch, mf, ...buttons),
       msg, params, tools, this.labelInput(item, 'Label this line, e.g. Candle 1'),
     );
+  }
+
+  /** Riemann sum: how many rectangles and where each one's height comes from. */
+  private riemannControls(item: ExprItem): HTMLElement {
+    const r = item.riemann!;
+    const method = h('select', { class: 'parent-select', title: 'Height of each rectangle' },
+      ...([['left', 'Left'], ['right', 'Right'], ['middle', 'Midpoint'], ['trapezoidal', 'Trapezoids']] as const).map(([v, label]) =>
+        h('option', { value: v, selected: r.method === v }, label)));
+    method.addEventListener('change', () => {
+      r.method = method.value as typeof r.method;
+      this.changed();
+    });
+    const count = h('input', { type: 'range', min: '1', max: '100', step: '1', value: String(r.n) });
+    const shown = h('span', { class: 'param-value' }, `n = ${r.n}`);
+    count.addEventListener('input', () => {
+      r.n = Number(count.value);
+      shown.textContent = `n = ${r.n}`;
+      this.board?.update();
+      this.opts.onChange();
+    });
+    return h('div', { class: 'param calc-param' }, h('label', { class: 'chip' }, method), count, shown);
+  }
+
+  /** Secant line: how far apart its two points are. */
+  private secantControls(item: ExprItem): HTMLElement {
+    const s = item.secant!;
+    const range = h('input', { type: 'range', min: '-3', max: '3', step: '0.01', value: String(s.h) });
+    const shown = h('input', { type: 'number', class: 'param-value', step: '0.001', value: String(s.h) });
+    const set = (v: number) => {
+      if (!Number.isFinite(v) || v === 0) return;
+      s.h = v;
+      this.board?.update();
+      this.opts.onChange();
+    };
+    range.addEventListener('input', () => {
+      shown.value = range.value;
+      set(Number(range.value));
+    });
+    shown.addEventListener('input', () => {
+      range.value = shown.value;
+      set(Number(shown.value));
+    });
+    const label = h('span', { class: 'param-name' });
+    label.innerHTML = katex.renderToString('h =', { throwOnError: false });
+    return h('div', { class: 'param calc-param' }, label, range, shown);
   }
 
   /** Pick a parent function (y = x², y = |x| …) to draw faintly behind this one. */
@@ -449,8 +515,12 @@ class GraphCard {
   }
 
   private slider(item: ExprItem, name: string): HTMLElement {
-    const value = h('input', { type: 'number', class: 'param-value', step: '0.1', value: String(item.params![name]) });
-    const range = h('input', { type: 'range', min: '-10', max: '10', step: '0.1', value: String(item.params![name]) });
+    // Counting letters (the n in a_n, or in Σ up to n) step by whole numbers.
+    const counting = COUNTING.has(name);
+    if (counting) item.params![name] = Math.max(0, Math.round(item.params![name]));
+    const step = counting ? '1' : '0.1';
+    const value = h('input', { type: 'number', class: 'param-value', step, value: String(item.params![name]) });
+    const range = h('input', { type: 'range', min: counting ? '0' : '-10', max: counting ? '30' : '10', step, value: String(item.params![name]) });
     const set = (v: number) => {
       if (!Number.isFinite(v)) return;
       item.params![name] = v;
@@ -554,6 +624,7 @@ class GraphCard {
     this.showAxisLabels();
     if (!this.boardDiv.isConnected || this.boardDiv.clientWidth === 0) return;
     if (this.board) JXG.JSXGraph.freeBoard(this.board);
+    if (this.graph.view === '3d') return this.build3D();
     const board: any = JXG.JSXGraph.initBoard(this.boardDiv.id, {
       boundingbox: this.graph.bbox,
       axis: true,
@@ -613,7 +684,7 @@ class GraphCard {
     this.crossings = [];
     const practice = this.opts.practice?.() ?? false;
     this.practiceNote.hidden = !practice || this.graph.intersections === false;
-    if (this.graph.intersections === false || practice) return;
+    if (this.graph.intersections === false || practice || this.graph.view === '3d') return;
 
     const curves: ((x: number) => number)[] = [];
     const verticals: number[] = [];
@@ -680,6 +751,21 @@ class GraphCard {
     if (!item.label?.trim()) return;
     this.draggableText(board, item.label, item.labelPos ?? fallback(), item.color, syncers,
       (p) => (item.labelPos = p), () => item.labelPos);
+  }
+
+  /** A rotatable 3D scene: drag to turn it, pinch or +/− to zoom. */
+  private build3D(): void {
+    const board: any = JXG.JSXGraph.initBoard(this.boardDiv.id, {
+      boundingbox: [-8, 8, 8, -8], keepAspectRatio: true, axis: false, grid: false,
+      showCopyright: false, showNavigation: true, pan: { enabled: false }, zoom: { wheel: false },
+    } as any);
+    this.board = board;
+    const items = this.graph.items
+      .filter((i): i is ExprItem => i.kind === 'expr' && !i.hidden)
+      .map((i) => ({ analysis: this.analysis(i), color: i.color, params: () => i.params ?? {} }))
+      .filter((i) => THREE_D_KINDS.has(i.analysis.kind));
+    draw3D(board, items, this.graph.range3d ?? 5);
+    this.crossings = [];
   }
 
   /** Clicks on the board with a construction tool chosen build the construction. */
@@ -776,6 +862,9 @@ class GraphCard {
       this.drawItemLabel(board, item, () => [x1 + (x2 - x1) * 0.6, y1 - (y1 - y2) * 0.12], syncers);
       return;
     }
+    if (a.kind === 'sequence') return drawSequence(board, a, () => item.params ?? {}, color);
+    if (a.kind === 'vector') return drawVector(board, a, () => item.params ?? {}, color);
+    if (a.kind === 'field' || a.kind === 'slopefield') return drawField(board, a, () => item.params ?? {}, color);
     if (a.kind === 'polar' || a.kind === 'parametric') {
       const p = () => item.params ?? {};
       const k = a.kind === 'polar' && this.graph.angles === 'deg' ? Math.PI / 180 : 1;
@@ -817,7 +906,8 @@ class GraphCard {
       });
     }
 
-    if (item.showDerivative) {
+    const practice = this.opts.practice?.() ?? false;
+    if (item.showDerivative && !practice) {
       board.create('functiongraph', [derivative(f)], { strokeColor: color, strokeWidth: 1.5, dash: 2, highlight: false });
     }
 
@@ -827,7 +917,7 @@ class GraphCard {
       const x0 = item.tangentAt;
       const g = board.create('glider', [x0, f(x0), curve], { name: '', size: 5, fillColor: color, strokeColor: color });
       board.create('tangent', [g], { strokeColor: color, strokeWidth: 1.5, dash: 1, highlight: false });
-      board.create('text', [() => g.X(), () => g.Y(), () => `  slope = ${fmt(derivative(f)(g.X()))}  at x = ${fmt(g.X())}`], {
+      board.create('text', [() => g.X(), () => g.Y(), () => (practice ? `  x = ${fmt(g.X())}` : `  slope = ${fmt(derivative(f)(g.X()))}  at x = ${fmt(g.X())}`)], {
         anchorY: 'bottom', fontSize: 13, strokeColor: color, fixed: true, highlight: false,
       });
       syncers.push(() => {
@@ -850,7 +940,7 @@ class GraphCard {
       const left = ig.curveLeft;
       const right = ig.curveRight;
       board.create('text', [() => (left.X() + right.X()) / 2, () => f((left.X() + right.X()) / 2) / 2,
-        () => `area = ${fmt(integrate(f, left.X(), right.X()))}`], {
+        () => (practice ? 'area = ?' : `area = ${fmt(integrate(f, left.X(), right.X()))}`)], {
         anchorX: 'middle', fontSize: 13, strokeColor: color, fixed: true, highlight: false,
       });
       syncers.push(() => {
@@ -861,6 +951,64 @@ class GraphCard {
         return true;
       });
     }
+
+    if (item.riemann) this.drawRiemann(board, item, f, color, practice, syncers);
+    if (item.secant) this.drawSecant(board, item, f, curve, color, practice, syncers);
+  }
+
+  /**
+   * Riemann sum: n rectangles (or trapezoids) from a to b, with draggable ends on the x-axis. The total is
+   * arithmetic — adding up the rectangles — and is hidden in practice mode.
+   */
+  private drawRiemann(board: any, item: ExprItem, f: (x: number) => number, color: string, practice: boolean, syncers: (() => boolean)[]): void {
+    const r = item.riemann!;
+    const end = (x: number) => board.create('glider', [x, 0, board.defaultAxes.x], {
+      name: '', size: 5, fillColor: color, strokeColor: color, showInfobox: false, withLabel: false, fixed: this.opts.readOnly,
+    });
+    const a = end(r.from);
+    const b = end(r.to);
+    const sum = board.create('riemannsum', [f, () => r.n, () => r.method, () => a.X(), () => b.X()], {
+      fillColor: color, fillOpacity: 0.2, strokeColor: color, strokeWidth: 1, highlight: false, fixed: true,
+    });
+    board.create('text', [() => (a.X() + b.X()) / 2, () => {
+      const [, top] = board.getBoundingBox();
+      return top - (top - board.getBoundingBox()[3]) * 0.06;
+    }, () => (practice ? `n = ${r.n}` : `n = ${r.n}:  sum ≈ ${fmt(sum.Value())}`)], {
+      anchorX: 'middle', fontSize: 13, strokeColor: color, fixed: true, highlight: false,
+    });
+    syncers.push(() => {
+      const from = round(a.X());
+      const to = round(b.X());
+      if (from === r.from && to === r.to) return false;
+      r.from = from;
+      r.to = to;
+      return true;
+    });
+  }
+
+  /**
+   * Secant line through (a, f(a)) and (a + h, f(a + h)); drag the first point along the curve and change h
+   * with the slider. Its slope is a difference quotient (arithmetic), hidden in practice mode.
+   */
+  private drawSecant(board: any, item: ExprItem, f: (x: number) => number, curve: any, color: string, practice: boolean, syncers: (() => boolean)[]): void {
+    const s = item.secant!;
+    const P = board.create('glider', [s.a, f(s.a), curve], {
+      name: '', size: 5, fillColor: color, strokeColor: color, showInfobox: false, withLabel: false, fixed: this.opts.readOnly,
+    });
+    const Q = board.create('point', [() => P.X() + s.h, () => f(P.X() + s.h)], {
+      name: '', size: 4, fillColor: '#ffffff', strokeColor: color, strokeWidth: 2, fixed: true, withLabel: false, showInfobox: false,
+    });
+    board.create('line', [P, Q], { strokeColor: '#e8590c', strokeWidth: 1.8, highlight: false, fixed: true });
+    board.create('text', [() => Q.X(), () => Q.Y(), () => {
+      const m = (f(P.X() + s.h) - f(P.X())) / s.h;
+      return practice ? `  h = ${fmt(s.h)}` : `  h = ${fmt(s.h)},  slope = ${fmt(m)}`;
+    }], { anchorY: 'top', fontSize: 13, strokeColor: '#e8590c', fixed: true, highlight: false });
+    syncers.push(() => {
+      const a = round(P.X());
+      if (a === s.a) return false;
+      s.a = a;
+      return true;
+    });
   }
 
   /**
