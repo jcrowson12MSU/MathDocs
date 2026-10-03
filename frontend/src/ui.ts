@@ -222,3 +222,21 @@ export function relativeTime(iso: string): string {
   if (s < 86400 * 7) return `${Math.floor(s / 86400)} d ago`;
   return new Date(iso).toLocaleDateString();
 }
+
+/**
+ * Scroll `el` into view inside the nearest scrolling area only — unlike `scrollIntoView`, never the page itself, which
+ * would push the notebook's header bar out of sight.
+ */
+export function scrollWithin(el: HTMLElement, { align = 'start', smooth = false }: { align?: 'start' | 'nearest'; smooth?: boolean } = {}): void {
+  let box = el.parentElement;
+  while (box && !(/(auto|scroll)/.test(getComputedStyle(box).overflowY) && box.scrollHeight > box.clientHeight)) box = box.parentElement;
+  if (!box) return;
+  const top = el.getBoundingClientRect().top - box.getBoundingClientRect().top;
+  const bottom = top + el.offsetHeight;
+  let delta = top - 8;
+  if (align === 'nearest') {
+    if (top >= 0 && bottom <= box.clientHeight) return;
+    if (top >= 0) delta = bottom - box.clientHeight + 8;
+  }
+  box.scrollTo({ top: box.scrollTop + delta, behavior: smooth ? 'smooth' : 'auto' });
+}

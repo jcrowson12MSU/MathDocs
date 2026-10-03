@@ -6,7 +6,7 @@ import { renderMarkdown } from '../markdown';
 import { normalize } from '../model';
 import { folderOf, isContents } from '../routes';
 import { loadSettings, saveSettings } from '../settings';
-import { h } from '../ui';
+import { h, scrollWithin } from '../ui';
 
 /** The table-of-contents notebook in `folder`, if there is one. */
 export async function findContents(folder: string): Promise<{ name: string; names: Set<string> } | null> {
@@ -117,6 +117,7 @@ export class TocPanel {
       }
     }
     // Bring the current notebook's entry into view.
-    this.el.querySelector('a.notebook-link.current')?.closest('.toc-block')?.scrollIntoView({ block: 'nearest' });
+    const here = this.el.querySelector<HTMLElement>('a.notebook-link.current')?.closest<HTMLElement>('.toc-block');
+    if (here) requestAnimationFrame(() => scrollWithin(here, { align: 'nearest' }));
   }
 }

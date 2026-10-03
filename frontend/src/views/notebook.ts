@@ -13,7 +13,7 @@ import {
 } from '../model';
 import { loadSettings, saveSettings, shareBase } from '../settings';
 import { shareLink } from '../share';
-import { confirm, debounce, downloadJson, h, openMenu, prompt, relativeTime, showDialog, toast } from '../ui';
+import { confirm, debounce, downloadJson, h, openMenu, prompt, relativeTime, scrollWithin, showDialog, toast } from '../ui';
 import { folderHash, folderOf, notebookHash } from '../routes';
 import { GraphPanel } from './graphs';
 import { focusable } from './mathfield';
@@ -144,7 +144,10 @@ export class NotebookView {
       if (this.startSection !== null) {
         // Opened from a link: show the top, or the linked section.
         if (this.startSection) this.goToSection(this.startSection);
-        else this.views.get(this.nb.cells[0]?.id ?? '')?.el.scrollIntoView({ block: 'start' });
+        else {
+          const first = this.views.get(this.nb.cells[0]?.id ?? '')?.el;
+          if (first) scrollWithin(first);
+        }
       } else if (!this.readOnly) {
         let last = this.nb.cells.length - 1;
         if (this.isHidden(last)) last = this.neighbor(last, -1);
@@ -470,7 +473,7 @@ export class NotebookView {
     }
     const el = this.views.get(cell.id)?.el;
     if (!el) return;
-    el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    scrollWithin(el, { smooth: true });
     el.classList.add('flash');
     setTimeout(() => el.classList.remove('flash'), 1600);
   }

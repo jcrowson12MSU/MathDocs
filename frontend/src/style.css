@@ -119,8 +119,8 @@ kbd {
 
 /* Work | splitter | graphs. The graph width is --graphs-w (set by dragging the splitter). */
 .nb-main { flex: 1; display: flex; min-height: 0; --graphs-w: 44%; }
-.work { flex: 1 1 0; min-width: 0; overflow-y: auto; padding: 14px 16px 40vh; }
-.graph-panel { display: none; flex: 0 0 var(--graphs-w); width: var(--graphs-w); min-width: 300px; overflow-y: auto; background: var(--bg); padding: 14px; }
+.work { position: relative; flex: 1 1 0; min-width: 0; overflow-y: auto; padding: 14px 16px 40vh; }
+.graph-panel { position: relative; display: none; flex: 0 0 var(--graphs-w); width: var(--graphs-w); min-width: 300px; overflow-y: auto; background: var(--bg); padding: 14px; }
 .graphs-open .graph-panel { display: block; }
 .work-hidden .work { display: none; }
 .work-hidden .graph-panel { flex: 1 1 auto; width: auto; }
