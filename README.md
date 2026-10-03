@@ -123,6 +123,8 @@ Choose **Graph this step** in a step's ⋯ menu, or open **📈 Graphs → + Add
 - **Expressions**: `y = 2x + 1`, `x^2 - 4`, `f(x) = \sin x`, `x = 3`, circles and other implicit
   curves (`x^2 + y^2 = 25`). Any other variable gets a slider, including subscripted and Greek ones
   (`a` and `b` in `y = ax + b`, `a_1`, `v_{max}`, `\alpha`).
+- **Equations in x alone** like `2x + 3 = 5x − 8` are drawn as a vertical line at each solution (here x = 11/3).
+- **Points**: `(10, 0)`, or several at once: `(1, 2), (3, 4)`.
 - **Calculus tools** for `y = f(x)`: derivative curve, a draggable tangent line that shows its slope, and
   shaded area under the curve between two draggable bounds.
 - **Tables of points**: type x and y values, or pick "y from …" to compute y from an expression.
@@ -131,7 +133,8 @@ Choose **Graph this step** in a step's ⋯ menu, or open **📈 Graphs → + Add
   line or table a **label** (e.g. "Candle 1"), and add **+ Note** text anywhere. Labels and notes can be
   dragged on the graph, and they stay where you put them.
 
-Drag to pan and scroll to zoom. ⟲ resets the view. Everything is open-source ([JSXGraph](https://jsxgraph.org))
+Drag to pan, and **pinch** on the trackpad to zoom (or use the + / − buttons). Two-finger scrolling scrolls
+the page as usual. ⟲ resets the view. Everything is open-source ([JSXGraph](https://jsxgraph.org))
 and works offline.
 
 ## Sharing

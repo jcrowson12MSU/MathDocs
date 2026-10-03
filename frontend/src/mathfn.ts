@@ -9,7 +9,10 @@ export type Params = Record<string, number>;
 export type Plottable =
   | { kind: 'function'; f: (x: number, p: Params) => number; params: string[] }
   | { kind: 'implicit'; f: (x: number, y: number, p: Params) => number; params: string[] }
-  | { kind: 'vertical'; x: number }
+  /** x = 3, or an equation in x alone like 2x+3 = 5x−8 (drawn at its solutions). */
+  | { kind: 'verticals'; xs: number[] }
+  /** (10, 0) or (1, 2), (3, 4). */
+  | { kind: 'points'; points: ((p: Params) => [number, number])[]; params: string[] }
   | { kind: 'empty' }
   | { kind: 'error'; message: string };
 
@@ -55,6 +58,7 @@ export function analyze(latex: string): Plottable {
   if (Array.isArray(json) && INEQUALITIES.has(json[0])) {
     return { kind: 'error', message: 'Inequalities aren’t graphed yet' };
   }
+  if (Array.isArray(json) && json[0] === 'Tuple') return points(json);
 
   let body: Json = json;
   let implicit = false;
@@ -64,10 +68,10 @@ export function analyze(latex: string): Plottable {
     const rhsHasY = symbolsIn(rhs).has('y');
     if ((lhs === 'y' || isFunctionHead(lhs)) && !rhsHasY) body = rhs;
     else if ((rhs === 'y' || isFunctionHead(rhs)) && !lhsHasY) body = lhs;
-    else if (lhs === 'x' && !symbolsIn(rhs).has('x') && !rhsHasY) {
-      const fn = compileJson(rhs);
-      if (typeof fn === 'string') return { kind: 'error', message: fn };
-      return { kind: 'vertical', x: fn({}) };
+    else if (!lhsHasY && !rhsHasY) {
+      // An equation in x alone (x = 3, 2x+3 = 5x−8): its graph is a vertical line at each solution.
+      // Drawing it as a curve in x and y would be slow and show the same thing.
+      return verticals(json);
     } else {
       body = ['Subtract', lhs, rhs];
       implicit = true;
@@ -86,6 +90,51 @@ export function analyze(latex: string): Plottable {
     return { kind: 'implicit', f: (x, y, p) => fn({ ...p, x, y }), params };
   }
   return { kind: 'function', f: (x, p) => fn({ ...p, x }), params };
+}
+
+/** Functions whose solutions Compute Engine finds completely (sin x = 0 has infinitely many, for example). */
+const ALGEBRAIC = new Set(['Equal', 'Add', 'Subtract', 'Multiply', 'Divide', 'Negate', 'Rational', 'Power', 'Square', 'Sqrt', 'Root', 'Delimiter', 'Abs']);
+
+function isAlgebraic(json: Json): boolean {
+  if (!Array.isArray(json)) return true;
+  if (!ALGEBRAIC.has(json[0])) return false;
+  // x in an exponent (2^x = 8) isn't something we solve here.
+  if ((json[0] === 'Power' || json[0] === 'Root') && symbolsIn(json[2]).has('x')) return false;
+  return json.slice(1).every(isAlgebraic);
+}
+
+function verticals(json: Json): Plottable {
+  if (!symbolsIn(json).has('x')) return { kind: 'error', message: 'There’s no x or y to graph' };
+  const others = [...symbolsIn(json)].filter((s) => s !== 'x' && /^[a-zA-Z]/.test(s) && !['Pi', 'ExponentialE'].includes(s));
+  if (others.length || !isAlgebraic(json)) {
+    return { kind: 'error', message: 'To graph this, write it as y = … (or x = a number)' };
+  }
+  try {
+    const raw: unknown = ce.box(json).solve('x');
+    const solutions = (Array.isArray(raw) ? raw : []) as { N(): { valueOf(): unknown } }[];
+    // Keep real solutions only (x² = −1 has none); imaginary ones come back as non-numbers.
+    const xs = solutions.map((s) => s.N().valueOf()).filter((v): v is number => typeof v === 'number' && Number.isFinite(v));
+    if (!xs.length) return { kind: 'error', message: 'No real solution to graph' };
+    return { kind: 'verticals', xs };
+  } catch {
+    return { kind: 'error', message: 'Couldn’t solve this for x' };
+  }
+}
+
+function points(json: Json): Plottable {
+  // (1, 2) is a Tuple of two numbers; (1, 2), (3, 4) is a Tuple of Tuples.
+  const pairs: Json[] = json.slice(1).every((t: Json) => Array.isArray(t) && t[0] === 'Tuple') ? json.slice(1) : [json];
+  if (!pairs.every((t) => t.length === 3)) return { kind: 'error', message: 'A point needs two numbers, like (2, 5)' };
+  const params = new Set<string>();
+  const out: ((p: Params) => [number, number])[] = [];
+  for (const [, xj, yj] of pairs) {
+    for (const s of [...symbolsIn(xj), ...symbolsIn(yj)]) if (/^[a-zA-Z]/.test(s) && !['Pi', 'ExponentialE'].includes(s)) params.add(s);
+    const fx = compileJson(xj);
+    const fy = compileJson(yj);
+    if (typeof fx === 'string' || typeof fy === 'string') return { kind: 'error', message: 'Couldn’t read this point' };
+    out.push((p) => [fx(p), fy(p)]);
+  }
+  return { kind: 'points', points: out, params: [...params].sort() };
 }
 
 /** LaTeX for a variable name as Compute Engine spells it, e.g. "a_12" -> "a_{12}", "alpha" -> "\alpha". */

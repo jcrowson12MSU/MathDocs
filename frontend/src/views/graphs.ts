@@ -142,7 +142,47 @@ class GraphCard {
       }
     });
     this.resizeObserver.observe(this.boardDiv);
+    this.boardDiv.addEventListener('wheel', this.onPinchWheel, { passive: false });
+    for (const type of ['gesturestart', 'gesturechange', 'gestureend']) {
+      this.boardDiv.addEventListener(type, this.onGesture as EventListener, { passive: false });
+    }
   }
+
+  /** Zoom around the pointer using JSXGraph's own zoomIn/zoomOut (factor > 1 zooms in). */
+  private zoomBy(factor: number, e: { clientX: number; clientY: number }): void {
+    const board = this.board;
+    if (!board || !Number.isFinite(factor) || factor <= 0 || factor === 1) return;
+    const zoom = board.attr.zoom;
+    const saved = [zoom.factorx, zoom.factory];
+    const step = factor > 1 ? factor : 1 / factor;
+    zoom.factorx = zoom.factory = step;
+    try {
+      const [x, y] = board.getUsrCoordsOfMouse(e);
+      if (factor > 1) board.zoomIn(x, y);
+      else board.zoomOut(x, y);
+    } finally {
+      // Put the +/− buttons' step back.
+      [zoom.factorx, zoom.factory] = saved;
+    }
+  }
+
+  /** Chrome and Firefox report a trackpad pinch as wheel events with Ctrl held; plain scrolling scrolls the page. */
+  private onPinchWheel = (e: WheelEvent) => {
+    if (!e.ctrlKey) return;
+    e.preventDefault();
+    this.zoomBy(Math.exp(-e.deltaY * 0.01), e);
+  };
+
+  /** Safari reports a trackpad pinch as gesture events with a running scale. */
+  private gestureScale = 1;
+  private onGesture = (e: Event & { scale?: number; clientX?: number; clientY?: number }) => {
+    e.preventDefault(); // stop Safari zooming the whole page
+    if (e.type === 'gesturestart') this.gestureScale = 1;
+    else if (e.type === 'gesturechange' && e.scale) {
+      this.zoomBy(e.scale / this.gestureScale, { clientX: e.clientX ?? 0, clientY: e.clientY ?? 0 });
+      this.gestureScale = e.scale;
+    }
+  };
 
   private showAxisLabels(): void {
     this.xAxisLabel.textContent = this.graph.xLabel ?? '';
@@ -238,7 +278,7 @@ class GraphCard {
       const a = this.analysis(item);
       msg.textContent = a.kind === 'error' ? a.message : '';
       // Sliders for parameters like a, b in y = ax + b.
-      const names = a.kind === 'function' || a.kind === 'implicit' ? a.params : [];
+      const names = a.kind === 'function' || a.kind === 'implicit' || a.kind === 'points' ? a.params : [];
       item.params ??= {};
       for (const n of names) item.params[n] ??= 1;
       params.replaceChildren(...names.map((n) => this.slider(item, n)));
@@ -413,7 +453,8 @@ class GraphCard {
       showCopyright: false,
       showNavigation: true,
       pan: { enabled: true, needShift: false, needTwoFingers: true },
-      zoom: { wheel: true, needShift: false, factorX: 1.2, factorY: 1.2 },
+      // Two-finger scrolling scrolls the page; pinching zooms (see onPinchWheel / onGesture).
+      zoom: { wheel: false, needShift: false, factorX: 1.2, factorY: 1.2 },
     } as any);
     this.board = board;
     const syncers: (() => boolean)[] = [];
@@ -474,9 +515,26 @@ class GraphCard {
     const a = this.analysis(item);
     const color = item.color;
     const [x1, y1, x2, y2] = board.getBoundingBox();
-    if (a.kind === 'vertical') {
-      board.create('line', [[a.x, 0], [a.x, 1]], { strokeColor: color, strokeWidth: 2.5, fixed: true, highlight: false });
-      this.drawItemLabel(board, item, () => [a.x + (x2 - x1) * 0.02, y1 - (y1 - y2) * 0.12], syncers);
+    if (a.kind === 'verticals') {
+      for (const x of a.xs) {
+        board.create('line', [[x, 0], [x, 1]], {
+          strokeColor: color, strokeWidth: 2.5, fixed: true, highlight: false,
+          point1: { visible: false }, point2: { visible: false },
+        });
+      }
+      this.drawItemLabel(board, item, () => [a.xs[0] + (x2 - x1) * 0.02, y1 - (y1 - y2) * 0.12], syncers);
+      return;
+    }
+    if (a.kind === 'points') {
+      for (const pt of a.points) {
+        const at = () => pt(item.params ?? {});
+        board.create('point', [() => at()[0], () => at()[1]], {
+          name: () => `(${fmt(at()[0])}, ${fmt(at()[1])})`, withLabel: true, fixed: true, size: 4,
+          fillColor: color, strokeColor: color, label: { fontSize: 11, strokeColor: color, offset: [6, 8] },
+        });
+      }
+      const first = a.points[0]?.(item.params ?? {}) ?? [0, 0];
+      this.drawItemLabel(board, item, () => [first[0] + (x2 - x1) * 0.03, first[1] - (y1 - y2) * 0.06], syncers);
       return;
     }
     if (a.kind === 'implicit') {
@@ -560,6 +618,10 @@ class GraphCard {
 
   destroy(): void {
     this.resizeObserver.disconnect();
+    this.boardDiv.removeEventListener('wheel', this.onPinchWheel);
+    for (const type of ['gesturestart', 'gesturechange', 'gestureend']) {
+      this.boardDiv.removeEventListener(type, this.onGesture as EventListener);
+    }
     this.saveBbox.flush();
     if (this.board) JXG.JSXGraph.freeBoard(this.board);
     this.board = null;

@@ -107,7 +107,26 @@ describe('analyze', () => {
     const c = analyze('x^2+y^2=25');
     expect(c.kind).toBe('implicit');
     if (c.kind === 'implicit') expect(c.f(3, 4, {})).toBe(0);
-    expect(analyze('x=3')).toEqual({ kind: 'vertical', x: 3 });
+    expect(analyze('x=3')).toEqual({ kind: 'verticals', xs: [3] });
+  });
+
+  it('draws an equation in x alone as vertical lines at its solutions', () => {
+    const one = analyze('2x+3=5x-8');
+    expect(one.kind === 'verticals' && one.xs.map((x) => +x.toFixed(6))).toEqual([3.666667]);
+    const two = analyze('x^2=9');
+    expect(two.kind === 'verticals' && [...two.xs].sort()).toEqual([-3, 3]);
+    expect(analyze('x^2=-1').kind).toBe('error'); // no real solution
+    expect(analyze('\\sin(x)=0').kind).toBe('error'); // infinitely many: ask for y = … instead
+  });
+
+  it('graphs points', () => {
+    const p = analyze('\\left(10,0\\right)');
+    expect(p.kind === 'points' && p.points.map((f) => f({}))).toEqual([[10, 0]]);
+    const ps = analyze('\\left(1,2\\right),\\left(3,4\\right)');
+    expect(ps.kind === 'points' && ps.points.map((f) => f({}))).toEqual([[1, 2], [3, 4]]);
+    const withSlider = analyze('\\left(a,3\\right)');
+    expect(withSlider.kind === 'points' && withSlider.params).toEqual(['a']);
+    expect(withSlider.kind === 'points' && withSlider.points[0]({ a: 5 })).toEqual([5, 3]);
   });
 
   it('reports what it cannot graph', () => {
