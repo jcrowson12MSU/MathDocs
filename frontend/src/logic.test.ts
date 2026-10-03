@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { analyze, applyOperation, derivative, integrate, intersections, mixedNumbers, splitRelation, variableLatex } from './mathfn';
 import { mathCell, mergeComments, type MathCell, newNotebook, normalize, parseNumber } from './model';
 import { decodeNotebook, encodeNotebook, shareLink } from './share';
+import { solutionSet, yRegion } from './inequality';
 import { columnAt, groupTerms, hasRelation, nearestColumn, type Atom } from './views/workrow';
 
 /** Fake measured atoms: each token 10px wide; null = nested inside the previous atom. */
@@ -131,7 +132,7 @@ describe('analyze', () => {
 
   it('reports what it cannot graph', () => {
     expect(analyze('')).toEqual({ kind: 'empty' });
-    expect(analyze('x<3').kind).toBe('error');
+    expect(analyze('x^2+y^2<25').kind).toBe('error'); // shaded circles aren't supported yet
     expect(analyze('x+y').kind).toBe('error');
   });
 });
@@ -214,6 +215,56 @@ describe('intersections', () => {
     expect(intersections((x) => 2 * x + 1, (x) => 2 * x + 5, -50, 50)).toEqual([]);
     // 1/x jumps from −∞ to +∞ at 0 but never crosses y = 0.
     expect(intersections((x) => 1 / x, () => 0, -5, 5)).toEqual([]);
+  });
+});
+
+describe('inequalities', () => {
+  const set = (latex: string) => {
+    const s = solutionSet(latex);
+    if (!s) return null;
+    const end = (v: number) => (v === Infinity ? '∞' : v === -Infinity ? '-∞' : +v.toFixed(6));
+    return s.intervals.map((i) => `${i.fromClosed ? '[' : '('}${end(i.from)}, ${end(i.to)}${i.toClosed ? ']' : ')'}`).join(' ∪ ');
+  };
+
+  it('solves one-variable inequalities into intervals', () => {
+    expect(set('x>3')).toBe('(3, ∞)');
+    expect(set('x\\ge3')).toBe('[3, ∞)');
+    expect(set('2x+3>7')).toBe('(2, ∞)');
+    expect(set('-3x\\le12')).toBe('[-4, ∞)'); // dividing by −3 flips it
+    expect(set('-2<x\\le3')).toBe('(-2, 3]');
+    expect(set('x^2<9')).toBe('(-3, 3)');
+    expect(set('x^2\\ge9')).toBe('(-∞, -3] ∪ [3, ∞)');
+    expect(set('x\\ne4')).toBe('(-∞, 4) ∪ (4, ∞)');
+    expect(set('x=5')).toBe('[5, 5]');
+    expect(set('t>5')).toBe('(5, ∞)');
+    expect(solutionSet('t>5')?.variable).toBe('t');
+  });
+
+  it('handles mixed numbers and has no solution when none exists', () => {
+    expect(set('x<2\\frac12')).toBe('(-∞, 2.5)');
+    expect(set('x^2<-1')).toBe('');
+  });
+
+  it('declines what it cannot do', () => {
+    expect(solutionSet('y<2x+1')).toBeNull(); // two variables
+    expect(solutionSet('2x+3')).toBeNull(); // not an (in)equality
+    expect(solutionSet('\\sin(x)>0')).toBeNull(); // infinitely many pieces
+  });
+
+  it('graphs inequalities as shaded regions or bands', () => {
+    const r = analyze('y<2x+1');
+    expect(r.kind === 'region' && [r.shade, r.inclusive, r.f(3, {})]).toEqual(['below', false, 7]);
+    const withSlider = analyze('y\\ge ax^2');
+    expect(withSlider.kind === 'region' && withSlider.params).toEqual(['a']);
+    const bands = analyze('x^2>9');
+    expect(bands.kind === 'xbands' && bands.intervals.length).toBe(2);
+  });
+
+  it('finds the boundary and side to shade for y inequalities', () => {
+    expect(yRegion('y<2x+1')).toMatchObject({ shade: 'below', inclusive: false });
+    expect(yRegion('y\\ge x^2')).toMatchObject({ shade: 'above', inclusive: true });
+    expect(yRegion('2x+1>y')).toMatchObject({ shade: 'below', inclusive: false });
+    expect(yRegion('x^2+y^2<25')).toBeNull();
   });
 });
 

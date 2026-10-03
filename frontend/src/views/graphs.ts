@@ -282,7 +282,7 @@ class GraphCard {
       const a = this.analysis(item);
       msg.textContent = a.kind === 'error' ? a.message : '';
       // Sliders for parameters like a, b in y = ax + b.
-      const names = a.kind === 'function' || a.kind === 'implicit' || a.kind === 'points' ? a.params : [];
+      const names = a.kind === 'function' || a.kind === 'implicit' || a.kind === 'points' || a.kind === 'region' ? a.params : [];
       item.params ??= {};
       for (const n of names) item.params[n] ??= 1;
       params.replaceChildren(...names.map((n) => this.slider(item, n)));
@@ -569,6 +569,43 @@ class GraphCard {
     const a = this.analysis(item);
     const color = item.color;
     const [x1, y1, x2, y2] = board.getBoundingBox();
+    if (a.kind === 'region') {
+      // y < f(x): shade below the boundary; dashed when the boundary isn't included (< or >).
+      const f = (x: number) => a.f(x, item.params ?? {});
+      const boundary = board.create('functiongraph', [f], {
+        strokeColor: color, strokeWidth: 2.5, highlight: false, dash: a.inclusive ? 0 : 2,
+      });
+      board.create('inequality', [boundary], {
+        inverse: a.shade === 'above', fillColor: color, fillOpacity: 0.18, highlight: false,
+      });
+      this.drawItemLabel(board, item, () => this.spotOnCurve(board, f), syncers);
+      return;
+    }
+    if (a.kind === 'xbands') {
+      // x > 3, x² < 9, …: shade each band where it's true, edges dashed when not included.
+      for (const band of a.intervals) {
+        const fill = board.create('curve', [[], []], { fillColor: color, fillOpacity: 0.18, strokeWidth: 0, highlight: false });
+        fill.updateDataArray = function () {
+          const [bx1, by1, bx2, by2] = board.getBoundingBox();
+          const pad = (bx2 - bx1) * 2;
+          const left = Math.max(band.from, bx1 - pad);
+          const right = Math.min(band.to, bx2 + pad);
+          const top = by1 + (by1 - by2);
+          const bottom = by2 - (by1 - by2);
+          this.dataX = [left, right, right, left, left];
+          this.dataY = [bottom, bottom, top, top, bottom];
+        };
+        for (const [edge, closed] of [[band.from, band.fromClosed], [band.to, band.toClosed]] as const) {
+          if (!Number.isFinite(edge)) continue;
+          board.create('line', [[edge, 0], [edge, 1]], {
+            strokeColor: color, strokeWidth: 2.5, dash: closed ? 0 : 2, fixed: true, highlight: false,
+            point1: { visible: false }, point2: { visible: false },
+          });
+        }
+      }
+      board.update();
+      return;
+    }
     if (a.kind === 'verticals') {
       for (const x of a.xs) {
         board.create('line', [[x, 0], [x, 1]], {

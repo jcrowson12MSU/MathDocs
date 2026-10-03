@@ -382,3 +382,89 @@ math-field.work-copy[read-only] { cursor: default; border-color: transparent !im
   .splitter { display: none; }
   .work-hidden .work { display: block; }
 }
+
+/* ---------- number lines ---------- */
+.number-line { margin: 2px 0 4px; }
+.number-line[hidden] { display: none; }
+.number-line-svg { display: block; width: 100%; max-width: 600px; height: auto; }
+.nl-axis { stroke: var(--ink); stroke-width: 1.5; }
+.nl-axis-head { fill: var(--ink); }
+.nl-tick { stroke: var(--ink); stroke-width: 1.2; }
+.nl-label { fill: var(--muted); font: 12px var(--font); }
+.nl-end { fill: var(--accent); font-weight: 600; }
+.nl-solution { stroke: var(--accent); stroke-width: 5; stroke-linecap: round; }
+.nl-sol-head { fill: var(--accent); }
+.nl-dot { stroke: var(--accent); stroke-width: 2.5; }
+.nl-dot.closed { fill: var(--accent); }
+.nl-dot.open { fill: var(--paper); }
+
+/* ---------- systems (elimination) ---------- */
+.system-box { padding-top: 6px; padding-bottom: 6px; }
+.system-row, .system-result { display: flex; align-items: center; gap: 4px; }
+.system-row.add { min-height: 22px; }
+.system-note, .system-note-spacer { width: 64px; flex: none; }
+math-field.system-note {
+  font-size: 18px; padding: 0 2px; text-align: right; color: var(--work);
+  border: 1px dashed transparent !important; border-radius: 6px; background: transparent;
+  --caret-color: var(--work); --placeholder-color: var(--work); --placeholder-opacity: 0.3;
+}
+.system-box:hover math-field.system-note, math-field.system-note:focus-within { border-color: var(--line) !important; }
+.system-sign { width: 22px; flex: none; text-align: center; font: 22px 'KaTeX_Main', Georgia, serif; color: var(--ink); }
+button.system-sign.toggle { border: none; background: none; cursor: pointer; border-radius: 6px; padding: 0; }
+button.system-sign.toggle:hover:not(:disabled) { background: var(--accent-soft); }
+button.system-sign.toggle:disabled { cursor: default; }
+math-field.system-eq {
+  flex: 0 1 auto; width: auto; min-width: 120px; font-size: 24px; padding: 2px 0;
+  border: none !important; box-shadow: none !important; background: transparent;
+}
+.system-rule { height: 0; border-top: 2px solid var(--ink); margin: 4px 0 4px 90px; max-width: 420px; }
+
+/* ---------- printing / Save as PDF ----------
+   body.printing is set by the Print button (so graphs can redraw at print size first);
+   @media print covers ⌘P too. */
+@page { margin: 0.6in; }
+@media print {
+  :root {
+    --bg: #ffffff; --paper: #ffffff; --ink: #111111; --muted: #555555; --line: #cccccc;
+    --accent: #2f5bea; --accent-soft: #eef2ff; --work: #d62828; --comment: #fff6d6; --comment-ink: #6b5200;
+    color-scheme: light;
+  }
+  html, body { height: auto; background: #fff; }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  #toasts, dialog, .menu { display: none !important; }
+}
+@media print {
+  .notebook-view { display: block; height: auto; }
+  .topbar { display: block; border: none; padding: 0 0 10px; background: none; }
+  .topbar > :not(.nb-title) { display: none !important; }
+  .topbar .nb-title { display: block; width: auto; border: none; padding: 0; font-size: 22px; font-weight: 700; color: var(--ink); }
+  .notebook-view::before { content: attr(data-print-date); float: right; color: var(--muted); font-size: 12px; margin-top: 6px; }
+  .nb-main { display: block !important; overflow: visible !important; }
+  .work { overflow: visible !important; padding: 0 !important; }
+  .work-hidden .work { display: block !important; }
+  .splitter, .banner, .inserter, .cell-actions, .comment-form, .print-skip, .system-row.add, .JXG_navigation { display: none !important; }
+  /* An empty step (showing only its gray suggestion) prints as nothing, even with ⌘P. */
+  .cell.math.has-suggestion:not(:has(.work-row:not([hidden]))) { display: none !important; }
+  .cells { max-width: none; }
+  .cell { break-inside: avoid; }
+  .cell.collapsed-away { display: grid !important; }
+  .step-box { box-shadow: none !important; border: 1px solid #e3e3e3 !important; }
+  .cell.math.focused .step-box, .step-box:focus-within { box-shadow: none !important; }
+  math-field.work-copy, math-field.system-note { border-color: transparent !important; }
+  .collapse-btn, .hidden-count { display: none; }
+  .md-view .muted { display: none; }
+
+  /* Graphs go after the work, at a fixed printed size, without their editing controls. */
+  .graph-panel { display: block !important; width: auto !important; min-width: 0 !important; padding: 12px 0 0 !important; border: none !important; background: none !important; overflow: visible !important; }
+  .graph-panel > .add-graph, .graph-panel > p.muted { display: none !important; }
+  .graph-card { break-inside: avoid; border: 1px solid #ddd; margin: 0 auto 14px; max-width: 6.5in; }
+  .graph-head .icon, .axis-fields, .graph-add, .calc-tools, .item-label-input, .table-opts,
+  .graph-item .icon, .graph-item .item-msg, .points td:last-child:has(button), .param input[type=range] { display: none !important; }
+  .board-wrap { max-width: 6in; margin: 0 auto; }
+  .board, .work-hidden .board { aspect-ratio: 1 / 1 !important; height: auto !important; }
+  .graph-title { pointer-events: none; }
+  .graph-title::placeholder { color: transparent; }
+  .nb-main:not(.graphs-open) .graph-panel { display: none !important; }
+}
+/* The same layout on screen while the Print button prepares the page (graphs size themselves to it). */
+body.printing .graph-panel { width: 6in !important; flex: none !important; }

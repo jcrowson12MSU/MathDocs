@@ -91,6 +91,34 @@ Start the operation with `+` or `−` to add or subtract, `·` (or `*`) to multi
 Mixed numbers like 2½ (typed `2` then `1/2`) are understood, and multiplying or dividing an inequality
 by a negative number flips it.
 
+### Systems of equations (elimination)
+
+**Option+S** (or **Add system below** in a cell's ⋯ menu) adds a system laid out the way it's done on paper:
+
+```
+         3x + 2y = 16
+   ×1  − 3x −  y =  7
+         ───────────
+              3y =  9
+```
+
+Type each equation (their = signs line up), press **←** at the start of a row to write a note like `×3`
+beside it, click the **+** to switch it to **−**, and write the combined equation under the line.
+**Enter** moves down the rows and from under the line to the next step. It's only a layout: the app
+never combines the equations for you. **Graph these equations** in the ⋯ menu graphs them, and the
+crossing point is marked.
+
+### Number lines
+
+Choose **Show number line** in a step's ⋯ menu to draw the step's inequality (or equation) in one letter
+under it: `x ≥ 3`, `−2 < x ≤ 3`, `x² ≥ 9` and so on, with a filled dot where the endpoint is included and an
+open dot where it isn't. It redraws as the step changes.
+
+### Printing and PDF
+
+Click **🖨 Print** at the top of a notebook (or press ⌘P). Sections are expanded, graphs are placed after
+the work, and the editing controls are left out. In the print dialog, choose **PDF → Save as PDF** to make a file.
+
 ### Dividers
 
 A divider is a section title, like a Markdown heading. Add one with **Option+H** or **+ Divider** (hover between
@@ -125,6 +153,8 @@ Choose **Graph this step** in a step's ⋯ menu, or open **📈 Graphs → + Add
   (`a` and `b` in `y = ax + b`, `a_1`, `v_{max}`, `\alpha`).
 - **Equations in x alone** like `2x + 3 = 5x − 8` are drawn as a vertical line at each solution (here x = 11/3).
 - **Points**: `(10, 0)`, or several at once: `(1, 2), (3, 4)`.
+- **Inequalities**: `y < 2x + 1`, `y ≥ x^2` shade below or above the boundary (dashed for < and >, solid for ≤
+  and ≥); inequalities in x alone, like `x > 3` or `x^2 < 9`, shade the vertical bands where they're true.
 - **Intersections**: where two lines or curves (`y = …`, or vertical lines like `x = 3`) cross, the point is
   marked with its coordinates, e.g. **(18, 70)**. Markers follow the view as you pan and zoom. Turn them off
   with **Mark intersections** under the graph. (Circles and tables of points aren't included yet.)

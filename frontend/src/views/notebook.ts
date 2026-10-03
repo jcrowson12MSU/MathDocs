@@ -6,7 +6,7 @@ import { saveIncoming } from '../incoming';
 import { renderMarkdown } from '../markdown';
 import { applyOperation } from '../mathfn';
 import {
-  dividerCell, mathCell, newId, nowIso, textCell,
+  dividerCell, mathCell, newId, nowIso, systemCell, textCell,
   type Cell, type DividerCell, type MathCell, type Notebook, type TextCell,
 } from '../model';
 import { loadSettings, saveSettings, shareBase } from '../settings';
@@ -16,6 +16,9 @@ import { folderHash, folderOf } from '../routes';
 import { GraphPanel } from './graphs';
 import { focusable } from './mathfield';
 import { WorkRow, hasRelation, leftSideEnd } from './workrow';
+import { systemEditor } from './system';
+import { solutionSet } from '../inequality';
+import { renderNumberLine } from './numberline';
 
 export type Mode = { kind: 'file'; name: string } | { kind: 'scratch' } | { kind: 'shared' };
 
@@ -46,6 +49,8 @@ interface CellEditor {
   suggest?(latex: string): void;
   /** Open the work row under a math step. */
   openWork?(): void;
+  /** Show or hide the number line under a math step. */
+  toggleNumberLine?(): void;
 }
 
 export class NotebookView {
@@ -128,6 +133,7 @@ export class NotebookView {
       graphsBtn,
       h('button', { class: 'btn', onclick: () => this.share() }, this.readOnly ? 'Share back' : 'Share'),
       h('button', { class: 'btn', title: 'Download as a .mathnb.json file', onclick: () => this.exportFile() }, 'Export'),
+      h('button', { class: 'btn', title: 'Print, or save as PDF from the print dialog', onclick: () => this.print() }, '🖨 Print'),
     ];
     if (m.kind === 'scratch') {
       buttons.unshift(
@@ -329,7 +335,10 @@ export class NotebookView {
     this.changed();
     if (focusPrev) this.focusAt(Math.max(0, i - 1), 'end');
     const hasContent =
-      cell.type === 'math' ? cell.latex.trim() || cell.operation : cell.type === 'markdown' ? cell.text.trim() : cell.title.trim();
+      cell.type === 'math' ? cell.latex.trim() || cell.operation
+      : cell.type === 'markdown' ? cell.text.trim()
+      : cell.type === 'system' ? cell.rows.some((r) => r.latex.trim()) || cell.result.trim()
+      : cell.title.trim();
     if (hasContent || cell.comments.length) {
       toast('Cell deleted.', { label: 'Undo', run: () => this.insertCell(Math.min(i, this.nb.cells.length), cell) }, 6000);
     }
@@ -354,7 +363,7 @@ export class NotebookView {
   private nextStep(id: string, copy: boolean): void {
     const i = this.index(id);
     const cell = this.nb.cells[i];
-    const latex = cell.type === 'math' ? cell.latex : '';
+    const latex = cell.type === 'math' ? cell.latex : cell.type === 'system' ? cell.result : '';
     // With an operation under the step (e.g. −3 under both sides), suggest its simplified result.
     const op = cell.type === 'math' ? cell.operation?.latex : undefined;
     const suggestion = (op && applyOperation(latex, op)) || latex;
@@ -376,7 +385,7 @@ export class NotebookView {
     for (const cell of this.nb.cells) {
       const v = this.views.get(cell.id);
       if (!v) continue;
-      if (cell.type !== 'math') {
+      if (cell.type === 'markdown' || cell.type === 'divider') {
         n = 0;
         v.numberEl.textContent = '';
       } else {
@@ -408,6 +417,11 @@ export class NotebookView {
       this.insertCell(this.index(cell.id) + 1, dividerCell());
       return true;
     }
+    // Option+S: a system of equations for elimination (matched by key: Option+S types ß on a Mac).
+    if (e.altKey && !e.metaKey && !e.ctrlKey && e.code === 'KeyS' && !this.readOnly) {
+      this.insertCell(this.index(cell.id) + 1, systemCell());
+      return true;
+    }
     return false;
   }
 
@@ -421,6 +435,18 @@ export class NotebookView {
     const content: CellEditor =
       cell.type === 'math' ? this.mathEditor(cell, el)
       : cell.type === 'markdown' ? this.textEditor(cell, el)
+      : cell.type === 'system' ? systemEditor(cell, {
+          readOnly: this.readOnly,
+          onChange: () => this.changed(),
+          cellKeys: (e) => this.cellKeys(e, cell),
+          leave: (dir) => {
+            const j = this.neighbor(this.index(cell.id), dir);
+            if (j < 0) return false;
+            this.focusAt(j, dir < 0 ? 'end' : 'start');
+            return true;
+          },
+          next: () => this.nextStep(cell.id, false),
+        })
       : this.dividerEditor(cell, el);
 
     let open = false;
@@ -453,6 +479,9 @@ export class NotebookView {
         isMath && edit && hasRelation(cell.latex)
           ? { label: '±  Same to both sides', hint: 'Shift+↓', run: () => content.openWork?.() }
           : null,
+        isMath && (edit || cell.numberLine)
+          ? { label: cell.numberLine ? '⟷  Hide number line' : '⟷  Show number line', run: () => content.toggleNumberLine?.() }
+          : null,
         isMath && edit && cell.latex.trim()
           ? {
               label: '📈  Graph this step',
@@ -462,12 +491,22 @@ export class NotebookView {
               },
             }
           : null,
+        cell.type === 'system' && edit && cell.rows.some((r) => r.latex.trim())
+          ? {
+              label: '📈  Graph these equations',
+              run: () => {
+                if (!this.graphsOpen) this.toggleGraphs();
+                for (const r of cell.rows) if (r.latex.trim()) this.graphs.addExpression(r.latex);
+              },
+            }
+          : null,
         ...(edit
           ? [
               null,
               { label: 'Add step below', run: () => this.insertCell(at(), mathCell()) },
               { label: 'Add text below', hint: '⌥↵', run: () => this.insertCell(at(), textCell()) },
               { label: 'Add divider below', hint: '⌥H', run: () => this.insertCell(at(), dividerCell()) },
+              { label: 'Add system (elimination) below', hint: '⌥S', run: () => this.insertCell(at(), systemCell()) },
               null,
               { label: 'Move up', hint: '⌥↑', run: () => this.moveCell(cell.id, -1) },
               { label: 'Move down', hint: '⌥↓', run: () => this.moveCell(cell.id, 1) },
@@ -483,6 +522,7 @@ export class NotebookView {
       h('button', { onclick: () => this.insertCell(this.index(cell.id) + 1, mathCell()) }, '+ Step'),
       h('button', { onclick: () => this.insertCell(this.index(cell.id) + 1, textCell()) }, '+ Text'),
       h('button', { onclick: () => this.insertCell(this.index(cell.id) + 1, dividerCell()) }, '+ Divider'),
+      h('button', { onclick: () => this.insertCell(this.index(cell.id) + 1, systemCell()) }, '+ System'),
     );
 
     el.append(h('div', { class: 'gutter' }, numberEl), h('div', { class: 'cell-body' }, content.el, commentsEl), actions);
@@ -530,11 +570,24 @@ export class NotebookView {
     updateCanWork();
     // Everything that follows from the step's contents changing. Setting mf.value from code
     // (like accepting a suggestion) fires no input event, so those paths call this directly.
+    // Number line under the step (from the ⋯ menu), redrawn as the step changes.
+    const numberLine = h('div', { class: 'number-line', hidden: true });
+    const drawNumberLine = () => {
+      numberLine.hidden = !cell.numberLine;
+      if (!cell.numberLine) return numberLine.replaceChildren();
+      const set = solutionSet(mf.value);
+      numberLine.replaceChildren(
+        set
+          ? renderNumberLine(set)
+          : h('p', { class: 'muted small' }, 'Write an inequality or equation in one letter (like x ≥ 3) to see it on a number line.'),
+      );
+    };
     const contentChanged = () => {
       cell.latex = mf.value;
       if (suggestion && mf.value) suggest('');
       updateCanWork();
       work.scheduleLayout();
+      if (cell.numberLine) drawNumberLine();
       this.changed();
     };
     mf.addEventListener('input', contentChanged);
@@ -602,12 +655,18 @@ export class NotebookView {
       }
     }, true);
 
-    const box = h('div', { class: 'step-box' }, mf, work.el);
+    const box = h('div', { class: 'step-box' }, mf, work.el, numberLine);
     work.scheduleLayout();
+    drawNumberLine();
     return {
       el: box,
       suggest,
       focus,
+      toggleNumberLine: () => {
+        cell.numberLine = cell.numberLine ? undefined : true;
+        drawNumberLine();
+        this.changed();
+      },
       openWork: () => {
         if (!hasRelation(mf.value)) {
           focus('end');
@@ -917,6 +976,44 @@ export class NotebookView {
     }
   }
 
+  /**
+   * Print (or Save as PDF): lay the page out for paper (see the print styles), with every section
+   * expanded and graphs drawn at their printed size, then open the browser's print dialog.
+   */
+  private async print(): Promise<void> {
+    await this.flush();
+    const collapsed = [...this.cellsEl.querySelectorAll('.cell.collapsed-away')];
+    collapsed.forEach((c) => c.classList.remove('collapsed-away'));
+    // Empty steps would print as blank boxes.
+    const empty = this.nb.cells
+      .filter((c) => (c.type === 'math' && !c.latex.trim() && !c.operation) || (c.type === 'markdown' && !c.text.trim()))
+      .map((c) => this.views.get(c.id)?.el)
+      .filter((el): el is HTMLElement => !!el);
+    empty.forEach((el) => el.classList.add('print-skip'));
+    const wasOpen = this.graphsOpen;
+    const wasWorkHidden = this.workHidden;
+    const hasGraphs = this.nb.graphs.length > 0;
+    document.body.classList.add('printing');
+    this.el.dataset.printDate = new Date().toLocaleDateString();
+    if (hasGraphs) this.setLayout(true, false);
+    // Let the graphs redraw at their printed size before the dialog takes its snapshot.
+    await new Promise((r) => setTimeout(r, 450));
+    let restored = false;
+    const restore = () => {
+      if (restored) return;
+      restored = true;
+      window.removeEventListener('afterprint', restore);
+      document.body.classList.remove('printing');
+      empty.forEach((el) => el.classList.remove('print-skip'));
+      this.applyCollapse();
+      if (hasGraphs) this.setLayout(wasOpen, wasWorkHidden);
+    };
+    window.addEventListener('afterprint', restore);
+    window.print();
+    // Safari doesn't always fire afterprint; print() blocks until the dialog closes anyway.
+    setTimeout(restore, 0);
+  }
+
   private exportFile(): void {
     downloadJson(`${this.nb.title || 'notebook'}.mathnb.json`, this.nb);
   }
@@ -969,6 +1066,8 @@ export function showHelp(): void {
     ['Option + ← / →  under the step', 'Move this copy under the next term (or drag it with the mouse)'],
     ['Alt + Enter', 'Add a text cell below'],
     ['Option + H', 'Add a divider (section title) below; click ▾ to collapse the section'],
+    ['Option + S', 'Add a system of equations (elimination) below; Enter moves down to the line'],
+    ['← at the start of a system row', 'Write a note beside it, like ×3'],
     ['Alt + ↑ / ↓', 'Move this cell up or down'],
     ['⌘ + /  or  Option + /', 'Comment on this step; again or Esc to close (use Option + / in Safari)'],
     ['/', 'Fraction (type 1/2, or select x+1 then /)'],

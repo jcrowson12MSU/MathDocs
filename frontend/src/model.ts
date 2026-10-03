@@ -17,6 +17,8 @@ export interface MathCell {
   latex: string;
   /** What's being done to both sides, written under the step (e.g. −5 under +5 and under +3). */
   operation?: Operation;
+  /** Draw the step's (in)equality on a number line under it. */
+  numberLine?: boolean;
   comments: Comment[];
 }
 
@@ -48,7 +50,28 @@ export interface DividerCell {
   comments: Comment[];
 }
 
-export type Cell = MathCell | TextCell | DividerCell;
+/**
+ * A system of equations laid out for elimination, like on paper:
+ *
+ *    ×3   2x + y = 7
+ *     +   x − 3y = 5
+ *     ─────────────
+ *         7x = 26
+ *
+ * Only layout: the student writes the notes, the sign, and the combined equation.
+ */
+export interface SystemCell {
+  id: string;
+  type: 'system';
+  rows: { latex: string; note?: string }[];
+  /** Add (+) or subtract (−) the last row. */
+  combine: '+' | '-';
+  /** The combined equation under the line. */
+  result: string;
+  comments: Comment[];
+}
+
+export type Cell = MathCell | TextCell | DividerCell | SystemCell;
 
 export interface ExprItem {
   id: string;
@@ -138,6 +161,10 @@ export function textCell(text = ''): TextCell {
   return { id: newId(), type: 'markdown', text, comments: [] };
 }
 
+export function systemCell(rows: string[] = ['', '']): SystemCell {
+  return { id: newId(), type: 'system', rows: rows.map((latex) => ({ latex })), combine: '+', result: '', comments: [] };
+}
+
 export function dividerCell(title = ''): DividerCell {
   return { id: newId(), type: 'divider', title, collapsed: false, comments: [] };
 }
@@ -221,9 +248,17 @@ export function normalize(raw: unknown): Notebook {
       if (c.type === 'divider') {
         return { id, type: 'divider', title: String(c.title ?? ''), collapsed: !!c.collapsed, comments };
       }
+      if (c.type === 'system') {
+        const rows = (Array.isArray(c.rows) ? c.rows : [])
+          .filter((r: any) => r && typeof r === 'object')
+          .map((r: any) => ({ latex: String(r.latex ?? ''), ...(typeof r.note === 'string' && r.note ? { note: r.note } : {}) }));
+        while (rows.length < 2) rows.push({ latex: '' });
+        return { id, type: 'system', rows, combine: c.combine === '-' ? '-' : '+', result: String(c.result ?? ''), comments };
+      }
       const math: MathCell = { id, type: 'math', latex: String(c.latex ?? ''), comments };
       const op = normalizeOperation(c.operation, c.work);
       if (op) math.operation = op;
+      if (c.numberLine === true) math.numberLine = true;
       return math;
     });
   const graphs: Graph[] = Array.isArray(r.graphs)

@@ -1,6 +1,10 @@
 // Turn LaTeX typed in a math field into something we can plot.
 
 import { ComputeEngine, compile } from '@cortex-js/compute-engine';
+import { solutionSet, yRegion, type Interval } from './inequality';
+import { mixedNumbers } from './latexutil';
+
+export { mixedNumbers };
 
 const ce = new ComputeEngine();
 
@@ -13,12 +17,30 @@ export type Plottable =
   | { kind: 'verticals'; xs: number[] }
   /** (10, 0) or (1, 2), (3, 4). */
   | { kind: 'points'; points: ((p: Params) => [number, number])[]; params: string[] }
+  /** y < f(x), y ≥ f(x), …: shade below or above the boundary (dashed when it isn't included). */
+  | { kind: 'region'; f: (x: number, p: Params) => number; shade: 'below' | 'above'; inclusive: boolean; params: string[] }
+  /** An inequality in x alone (x > 3, x² < 9): shade the vertical bands where it's true. */
+  | { kind: 'xbands'; intervals: Interval[] }
   | { kind: 'empty' }
   | { kind: 'error'; message: string };
 
 type Json = any;
 
-const INEQUALITIES = new Set(['Less', 'LessEqual', 'Greater', 'GreaterEqual', 'NotEqual']);
+// Compute Engine writes > and ≥ as flipped < and ≤, and a chain like 1 < x < 3 as And(…).
+const INEQUALITIES = new Set(['Less', 'LessEqual', 'Greater', 'GreaterEqual', 'NotEqual', 'And']);
+
+function inequality(latex: string): Plottable {
+  const region = yRegion(latex);
+  if (region) {
+    const fn = compileJson(region.boundary);
+    if (typeof fn === 'string') return { kind: 'error', message: fn };
+    const params = [...symbolsIn(region.boundary)].filter((s) => s !== 'x' && /^[a-zA-Z]/.test(s) && !['Pi', 'ExponentialE'].includes(s)).sort();
+    return { kind: 'region', f: (x, p) => fn({ ...p, x }), shade: region.shade, inclusive: region.inclusive, params };
+  }
+  const set = solutionSet(latex);
+  if (set && set.variable === 'x') return { kind: 'xbands', intervals: set.intervals };
+  return { kind: 'error', message: 'Write it as y < … (or ≤, >, ≥), or as an inequality in x' };
+}
 
 function symbolsIn(json: Json, out = new Set<string>()): Set<string> {
   if (typeof json === 'string') out.add(json);
@@ -56,9 +78,7 @@ export function analyze(latex: string): Plottable {
   const expr = ce.parse(mixedNumbers(latex));
   const json: Json = expr.json;
   if (hasErrors(json)) return { kind: 'error', message: 'Finish typing the expression' };
-  if (Array.isArray(json) && INEQUALITIES.has(json[0])) {
-    return { kind: 'error', message: 'Inequalities aren’t graphed yet' };
-  }
+  if (Array.isArray(json) && INEQUALITIES.has(json[0])) return inequality(latex);
   if (Array.isArray(json) && json[0] === 'Tuple') return points(json);
 
   let body: Json = json;
@@ -151,16 +171,6 @@ const FLIPPED: Record<string, string> = {
   '<': '>', '>': '<', '\\lt': '\\gt', '\\gt': '\\lt', '\\le': '\\ge', '\\ge': '\\le', '\\leq': '\\geq', '\\geq': '\\leq',
 };
 
-/**
- * Students write 2½x as 2\frac12x. Read a whole number written right before a number-over-number
- * fraction as a mixed number (Compute Engine would otherwise multiply: 2·½·x).
- */
-export function mixedNumbers(latex: string): string {
-  const num = String.raw`(\d|\{\d+\})`;
-  return latex.replace(new RegExp(String.raw`(^|[^\d.}^_])(\d+)\\frac${num}${num}`, 'g'), (_m, pre, whole, a, b) =>
-    `${pre}\\left(${whole}+\\frac{${a.replace(/[{}]/g, '')}}{${b.replace(/[{}]/g, '')}}\\right)`,
-  );
-}
 
 /** Split a step at its one top-level relation: "2x+3=5x-8" → ["2x+3", "=", "5x-8"]. */
 export function splitRelation(latex: string): [string, string, string] | null {
