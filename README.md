@@ -13,9 +13,10 @@ python main.py
 You can also press **Run** on `main.py` in PyCharm. The first run builds the web UI (this needs
 Node.js). After that it starts the app at <http://127.0.0.1:8642/> and opens your browser.
 
-- Notebooks are saved in `~/MathJournal/`, one readable `.mathnb.json` file each.
+- Notebooks are saved in `~/MathJournal/`, one readable `.mathnb.json` file each. Folders in the app are
+  ordinary folders there (e.g. `~/MathJournal/Algebra/Unit 2/Quadratics.mathnb.json`).
   Set `MATHJOURNAL_DIR` to use a different folder, or `MATHJOURNAL_PORT` to use a different port.
-- Deleted notebooks are moved to `~/MathJournal/.trash/` and can be recovered from there.
+- Deleted notebooks and folders are moved to `~/MathJournal/.trash/` and can be recovered from there.
 - After changing the frontend code, rebuild it with `cd frontend && npm run build`, or delete `frontend/dist`.
 
 First-time setup on a new computer:
@@ -25,6 +26,17 @@ python -m venv .venv && .venv/bin/pip install -r requirements.txt
 cd frontend && npm install && cd ..
 .venv/bin/python main.py
 ```
+
+## Folders
+
+The home page shows the folders and notebooks in the folder you're in, with a path at the top
+(**All notebooks › Algebra › Unit 2**) to go back up. Click a folder to open it.
+
+- **+ New folder** and **+ New notebook** create them in the folder you're viewing; **Import file…** imports there too.
+- Each folder and notebook has a **⋯** menu: **Rename…**, **Move to…** and **Delete** (to the trash).
+- Drag a notebook or folder onto another folder, or onto a part of the path at the top, to move it there.
+- **Search** looks through every folder and shows where each match is.
+- In a notebook, the **←** link at the top goes back to its folder.
 
 ## Writing math
 

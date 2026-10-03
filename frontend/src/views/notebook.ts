@@ -12,6 +12,7 @@ import {
 import { loadSettings, saveSettings, shareBase } from '../settings';
 import { shareLink } from '../share';
 import { confirm, debounce, downloadJson, h, openMenu, prompt, relativeTime, showDialog, toast } from '../ui';
+import { folderHash, folderOf } from '../routes';
 import { GraphPanel } from './graphs';
 import { focusable } from './mathfield';
 import { WorkRow, hasRelation, leftSideEnd } from './workrow';
@@ -141,8 +142,11 @@ export class NotebookView {
       buttons.unshift(h('a', { class: 'btn', href: LOCAL_APP + location.hash, title: 'Opens this in the Math Notebook app on this computer, if it is running' }, 'Open in my app'));
     }
 
+    // Back to the folder this notebook is in.
+    const folder = m.kind === 'file' ? folderOf(m.name) : '';
     return h('header', { class: 'topbar' },
-      h('a', { class: 'home-link', href: '#/', title: 'All notebooks' }, '← Notebooks'),
+      h('a', { class: 'home-link', href: folderHash(folder), title: folder ? `Back to ${folder.split('/').join(' › ')}` : 'All notebooks' },
+        folder ? `← ${folder.split('/').pop()}` : '← Notebooks'),
       title,
       this.statusEl,
       h('div', { class: 'spacer' }),

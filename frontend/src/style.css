@@ -85,6 +85,20 @@ kbd {
 .empty { padding: 24px; text-align: center; margin: 0; }
 .folder { margin-top: 16px; }
 
+/* Folders on the home page */
+.crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 0 0 10px; font-size: 15px; }
+.crumb { color: var(--accent); text-decoration: none; padding: 3px 6px; border-radius: 6px; }
+.crumb:hover { background: var(--accent-soft); }
+.crumb.current { color: var(--ink); font-weight: 600; }
+.crumb-sep { color: var(--muted); }
+.folder-row .nb-name { display: flex; align-items: center; gap: 8px; }
+.folder-icon { font-size: 17px; }
+.nb-row .menu-btn { font-size: 18px; padding: 2px 8px; opacity: 0.35; }
+.nb-row:hover .menu-btn, .nb-row .menu-btn:focus, .nb-row .menu-btn.menu-open { opacity: 1; }
+.nb-row[draggable='true'] { cursor: grab; }
+.nb-row.dragging { opacity: 0.45; }
+.drop-over { outline: 2px dashed var(--accent); outline-offset: -2px; background: var(--accent-soft) !important; }
+
 /* ---------- notebook layout ---------- */
 .notebook-view { height: 100vh; display: flex; flex-direction: column; }
 .topbar {

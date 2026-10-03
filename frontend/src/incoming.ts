@@ -8,7 +8,7 @@ import { confirm, toast } from './ui';
  * If the journal already has this notebook (same id), offer to merge in the incoming comments;
  * otherwise save it as a new notebook. Returns the name of the notebook to open, or null if cancelled.
  */
-export async function saveIncoming(nb: Notebook): Promise<string | null> {
+export async function saveIncoming(nb: Notebook, folder = ''): Promise<string | null> {
   const existing = (await api.list()).find((s) => s.id === nb.id);
   if (existing) {
     const merge = await confirm(
@@ -26,7 +26,7 @@ export async function saveIncoming(nb: Notebook): Promise<string | null> {
     if (!(await confirm('Save a separate copy?', 'Save this as a new notebook instead?', 'Save copy'))) return null;
     nb = { ...nb, id: crypto.randomUUID(), title: `${nb.title} (copy)` };
   }
-  const { name } = await api.create(nb);
+  const { name } = await api.create(nb, folder);
   toast(`Saved “${nb.title}” to your journal.`);
   return name;
 }

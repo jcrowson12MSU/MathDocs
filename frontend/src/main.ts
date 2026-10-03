@@ -64,7 +64,8 @@ async function route(): Promise<void> {
       current = view;
       app.replaceChildren(view.el);
     } else {
-      const home = await homeView();
+      const folder = hash.startsWith('#/folder/') ? decodeURIComponent(hash.slice('#/folder/'.length)) : '';
+      const home = await homeView(folder);
       if (token !== routeToken) return;
       document.title = 'Math Notebook';
       app.replaceChildren(home);
