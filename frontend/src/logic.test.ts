@@ -260,6 +260,15 @@ describe('inequalities', () => {
     expect(solutionSet('t>5')?.variable).toBe('t');
   });
 
+  it('handles "or", "and", and absolute value both ways round', () => {
+    expect(set('x<-1\\text{ or }x\\ge4')).toBe('(-∞, -1) ∪ [4, ∞)');
+    expect(set('x>2\\text{ and }x\\le6')).toBe('(2, 6]');
+    expect(set('-3\\le2x+1<5')).toBe('[-2, 2)');
+    expect(set('\\left|x-3\\right|<5')).toBe('(-2, 8)');
+    expect(set('\\left|x-3\\right|\\ge5')).toBe('(-∞, -2] ∪ [8, ∞)');
+    expect(set('\\left|2x+1\\right|=7')).toBe('[-4, -4] ∪ [3, 3]');
+  });
+
   it('handles mixed numbers and has no solution when none exists', () => {
     expect(set('x<2\\frac12')).toBe('(-∞, 2.5)');
     expect(set('x^2<-1')).toBe('');

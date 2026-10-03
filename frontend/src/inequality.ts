@@ -39,6 +39,19 @@ function symbols(json: Json, out = new Set<string>()): Set<string> {
   return out;
 }
 
+/**
+ * The conditions as alternatives ("or") of groups that must all hold ("and"): x < −1 or 2 ≤ x < 5 is
+ * [[x < −1], [2 ≤ x, x < 5]].
+ */
+function conditionGroups(json: Json): Condition[][] | null {
+  if (Array.isArray(json) && json[0] === 'Or') {
+    const parts = json.slice(1).map(conditionGroups);
+    return parts.every(Boolean) ? (parts as Condition[][][]).flat() : null;
+  }
+  const c = conditions(json);
+  return c ? [c] : null;
+}
+
 function conditions(json: Json): Condition[] | null {
   if (!Array.isArray(json)) return null;
   if (json[0] === 'And') {
@@ -57,12 +70,17 @@ function hasError(json: Json): boolean {
   return Array.isArray(json) && (json[0] === 'Error' || json.slice(1).some(hasError));
 }
 
-/** Parse a step into its conditions, or null if it isn't an (in)equality. */
+/** Parse a step into its conditions, or null if it isn't an (in)equality. (With "or", all of them.) */
 export function parseConditions(latex: string): Condition[] | null {
+  return parseGroups(latex)?.flat() ?? null;
+}
+
+/** Parse a step into "or" alternatives of "and" groups of conditions. */
+function parseGroups(latex: string): Condition[][] | null {
   if (!latex.trim()) return null;
   const json = ce.parse(mixedNumbers(latex)).json;
   if (hasError(json)) return null;
-  return conditions(json);
+  return conditionGroups(json);
 }
 
 export function isInequality(latex: string): boolean {
@@ -97,16 +115,24 @@ function isAlgebraic(json: Json, variable: string): boolean {
 /** Real numbers where left = right (algebraic equations only). */
 function roots(left: Json, right: Json, variable: string): number[] | null {
   if (!isAlgebraic(left, variable) || !isAlgebraic(right, variable)) return null;
-  try {
-    // As left − right = 0: Compute Engine finds no solution for −1 = x written the other way round.
-    const raw: unknown = ce.box(['Equal', ['Subtract', left, right], 0]).solve(variable);
-    if (!Array.isArray(raw)) return null;
-    return (raw as { N(): { valueOf(): unknown } }[])
-      .map((s) => s.N().valueOf())
-      .filter((v): v is number => typeof v === 'number' && Number.isFinite(v));
-  } catch {
-    return null;
+  // As left − right = 0, and also right − left = 0: Compute Engine sometimes finds no solution written one way
+  // round (−1 = x, or 5 = |x − 3|) but does the other way.
+  const found: number[] = [];
+  let solved = false;
+  const diffs: Json[] = [['Subtract', left, right], ['Subtract', right, left]];
+  for (const diff of diffs) {
+    try {
+      const raw: unknown = ce.box(['Equal', diff, 0]).solve(variable);
+      if (!Array.isArray(raw)) continue;
+      solved = true;
+      for (const v of (raw as { N(): { valueOf(): unknown } }[]).map((s) => s.N().valueOf())) {
+        if (typeof v === 'number' && Number.isFinite(v)) found.push(v);
+      }
+    } catch {
+      // try the other way round
+    }
   }
+  return solved ? found : null;
 }
 
 /**
@@ -115,14 +141,15 @@ function roots(left: Json, right: Json, variable: string): number[] | null {
  * Returns null when it isn't a one-variable (in)equality we can handle.
  */
 export function solutionSet(latex: string): SolutionSet | null {
-  const conds = parseConditions(latex);
-  if (!conds?.length) return null;
+  const groups = parseGroups(latex);
+  const conds = groups?.flat();
+  if (!groups || !conds?.length) return null;
   const vars = new Set<string>();
   for (const c of conds) for (const s of [...symbols(c.left), ...symbols(c.right)]) vars.add(s);
   if (vars.size !== 1) return null;
   const [variable] = vars;
 
-  const tests: ((v: number) => boolean)[] = [];
+  const tests = new Map<Condition, (v: number) => boolean>();
   const critical: number[] = [];
   for (const c of conds) {
     const l = evaluator(c.left, variable);
@@ -131,7 +158,7 @@ export function solutionSet(latex: string): SolutionSet | null {
     if (!l || !r || !rs) return null;
     critical.push(...rs);
     const eps = 1e-9;
-    tests.push((v) => {
+    tests.set(c, (v) => {
       const d = l(v) - r(v);
       if (!Number.isFinite(d)) return false;
       const scale = 1 + Math.abs(l(v)) + Math.abs(r(v));
@@ -144,7 +171,8 @@ export function solutionSet(latex: string): SolutionSet | null {
       }
     });
   }
-  const holds = (v: number) => tests.every((t) => t(v));
+  // True where every condition of at least one "or" alternative holds.
+  const holds = (v: number) => groups.some((g) => g.every((c) => tests.get(c)!(v)));
 
   const pts = [...new Set(critical.map((v) => +v.toPrecision(12)))].sort((a, b) => a - b);
   // Walk the pieces left to right: (−∞, p0), {p0}, (p0, p1), {p1}, …, (pn, ∞).
