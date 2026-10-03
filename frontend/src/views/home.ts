@@ -62,6 +62,20 @@ function pickFolder(title: string, folders: FolderSummary[], current: string, ex
   });
 }
 
+/** A notebook named "Contents" or "Table of Contents" is a folder's table of contents. */
+export const isContents = (title: string) => /^(table of )?contents$/i.test(title.trim());
+
+/**
+ * Notebooks in a folder, newest first — unless the folder has a table of contents. Then it's a book:
+ * the contents first, then the rest by name with numbers in order (Chapter 2 before Chapter 10).
+ */
+export function bookOrder<T extends { title: string }>(list: T[]): T[] {
+  if (!list.some((n) => isContents(n.title))) return list;
+  return [...list].sort((a, b) =>
+    Number(isContents(b.title)) - Number(isContents(a.title))
+    || a.title.localeCompare(b.title, undefined, { numeric: true, sensitivity: 'base' }));
+}
+
 export async function homeView(folder = ''): Promise<HTMLElement> {
   const info = await serverInfo();
   const serverOk = info.ok;
@@ -166,7 +180,7 @@ export async function homeView(folder = ''): Promise<HTMLElement> {
     return row;
   };
 
-  const notebookRow = (n: NotebookSummary, showWhere = false) => {
+  const notebookRow = (n: NotebookSummary, showWhere = false, book = false) => {
     const menu = h('button', { class: 'icon menu-btn', title: 'More actions', 'aria-haspopup': 'menu' }, '⋯');
     menu.addEventListener('click', () =>
       openMenu(menu, [
@@ -196,8 +210,9 @@ export async function homeView(folder = ''): Promise<HTMLElement> {
       ]),
     );
     const row = h('div', { class: 'nb-row' },
-      h('a', { class: 'nb-link', href: notebookHash(n.name) },
-        h('span', { class: 'nb-name' }, n.title),
+      // In a book (a folder with a table of contents), notebooks open at the top, to read from the start.
+      h('a', { class: 'nb-link', href: notebookHash(n.name, book ? '' : undefined) },
+        h('span', { class: 'nb-name' }, isContents(n.title) ? `📖 ${n.title}` : n.title),
         h('span', { class: 'muted small' },
           showWhere && n.folder ? `in ${displayPath(n.folder)} · ` : '',
           `${relativeTime(n.modified)} · ${plural(n.cellCount, 'cell')}`),
@@ -241,11 +256,11 @@ export async function homeView(folder = ''): Promise<HTMLElement> {
       return;
     }
     const fs = folders.filter((f) => f.parent === folder).sort((a, b) => a.name.localeCompare(b.name));
-    const ns = notebooks.filter((n) => n.folder === folder);
+    const ns = bookOrder(notebooks.filter((n) => n.folder === folder));
     const empty = folder ? 'This folder is empty. Make a notebook or a folder here.' : 'No notebooks yet — make one!';
     list.replaceChildren(
       ...fs.map((f) => folderRow(f)),
-      ...ns.map((n) => notebookRow(n)),
+      ...ns.map((n) => notebookRow(n, false, ns.some((x) => isContents(x.title)))),
       fs.length || ns.length ? '' : h('p', { class: 'muted empty' }, empty),
     );
   };

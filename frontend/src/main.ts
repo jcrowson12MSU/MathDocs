@@ -10,6 +10,7 @@ import { decodeNotebook } from './share';
 import { h } from './ui';
 import { homeView } from './views/home';
 import { NotebookView } from './views/notebook';
+import { parseNotebookHash } from './routes';
 
 // Fonts are bundled by Vite (imported above), so MathLive never fetches anything from the network.
 MathfieldElement.fontsDirectory = null;
@@ -40,10 +41,13 @@ async function route(): Promise<void> {
   const serverOk = await available();
   try {
     let view: NotebookView | null = null;
-    if (hash.startsWith('#/nb/')) {
-      const name = decodeURIComponent(hash.slice(5));
+    const target = parseNotebookHash(hash);
+    if (target) {
+      const { name } = target;
       const nb = normalize(await api.get(name));
       view = new NotebookView(nb, { kind: 'file', name }, serverOk);
+      // Opened from a link: start at the top, or at the linked section.
+      if (target.section !== null) view.openAt(target.section);
       document.title = `${nb.title} — Math Notebook`;
     } else if (hash.startsWith('#/scratch')) {
       if (!serverOk) throw new Error('The scratch pad needs the Math Notebook app running on this computer.');

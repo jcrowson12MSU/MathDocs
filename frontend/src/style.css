@@ -617,3 +617,12 @@ body.printing .graph-panel { width: 6in !important; flex: none !important; }
 .calc-param { flex-wrap: wrap; }
 .calc-row > math-field, .parts-grid > math-field, .di-grid > math-field { display: inline-block; width: auto; flex: 0 0 auto; }
 .calc-row > math-field.calc-wide, .calc-row > math-field.limit-field:not(.small) { min-width: 14em; }
+
+/* Links between notebooks ([[Chapter 6 - Systems]]) and the section they jump to */
+.text-view a.notebook-link, a.notebook-link { color: var(--accent); text-decoration: none; border-bottom: 1px solid var(--accent-soft); font-weight: 500; }
+a.notebook-link:hover { border-bottom-color: var(--accent); }
+a.notebook-link.missing { color: var(--muted); border-bottom: 1px dashed var(--line); font-weight: 400; }
+a.notebook-link.missing::after { content: " (not written yet)"; font-size: 0.8em; }
+.cell.flash { animation: flash 1.6s ease-out; }
+@keyframes flash { from { background: var(--accent-soft); } to { background: transparent; } }
+@media print { a.notebook-link.missing::after { content: ""; } }

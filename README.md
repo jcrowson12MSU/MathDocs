@@ -200,6 +200,24 @@ Hover over a cell and click **⋯** on its right for everything you can do with 
 sides), graph the step, add a step, text or divider below, move it up or down, or delete it. Each item shows
 its keyboard shortcut.
 
+## Links between notebooks and books
+
+In a text cell, put a notebook's name in double brackets to link to it:
+
+- `[[Chapter 6 - Systems of Linear Equations]]`: a notebook in the same folder
+- `[[Chapter 6 - Systems of Linear Equations|Systems]]`: the same link, shown as *Systems*
+- `[[Chapter 6 - Systems of Linear Equations#Lesson 3]]`: straight to a section (the first divider whose title
+  starts with *Lesson 3*, opened if it's collapsed)
+- `[[#Chapter Review]]`: a section of the same notebook
+- `[[/Examples/Inequalities]]`: a notebook in another folder (start with `/` for the top level)
+
+A link to a notebook that doesn't exist yet is gray and marked *(not written yet)*; clicking it offers to start it.
+A notebook opened from a link opens at the top (or at its section) instead of at its last step.
+
+**Books.** A folder with a notebook named **Table of Contents** (or **Contents**) is a book: the contents are listed
+first (📖), the other notebooks follow in order by name with numbers sorted properly (Chapter 2 before Chapter 10), and
+they open at the top. Other folders still list the most recently changed notebooks first.
+
 ## Comments
 
 Choose **Comment** in a cell's ⋯ menu, or press **⌘ /** (**Option /** in Safari), to leave a comment. You enter

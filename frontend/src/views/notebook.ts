@@ -7,14 +7,14 @@ import { renderMarkdown } from '../markdown';
 import katex from 'katex';
 import { applyOperation } from '../mathfn';
 import {
-  axisLetBoxes, dividerCell, layoutCell, letBoxAbove, letBoxFor, limitCell, mathCell, matrixCell, meaningIn, newId, nowIso, proofCell, systemCell, textCell, variablesCell,
+  axisLetBoxes, newNotebook, dividerCell, layoutCell, letBoxAbove, letBoxFor, limitCell, mathCell, matrixCell, meaningIn, newId, nowIso, proofCell, systemCell, textCell, variablesCell,
   type Graph, type LayoutKind,
   type Cell, type DividerCell, type MathCell, type Notebook, type TextCell,
 } from '../model';
 import { loadSettings, saveSettings, shareBase } from '../settings';
 import { shareLink } from '../share';
 import { confirm, debounce, downloadJson, h, openMenu, prompt, relativeTime, showDialog, toast } from '../ui';
-import { folderHash, folderOf } from '../routes';
+import { folderHash, folderOf, notebookHash } from '../routes';
 import { GraphPanel } from './graphs';
 import { focusable } from './mathfield';
 import { WorkRow, hasRelation, leftSideEnd } from './workrow';
@@ -139,7 +139,11 @@ export class NotebookView {
     this.setStatus(this.mode.kind === 'shared' ? 'Shared copy — not saved' : 'Saved');
     requestAnimationFrame(() => {
       if (this.graphsOpen) this.graphs.refresh();
-      if (!this.readOnly) {
+      if (this.startSection !== null) {
+        // Opened from a link: show the top, or the linked section.
+        if (this.startSection) this.goToSection(this.startSection);
+        else this.views.get(this.nb.cells[0]?.id ?? '')?.el.scrollIntoView({ block: 'start' });
+      } else if (!this.readOnly) {
         let last = this.nb.cells.length - 1;
         if (this.isHidden(last)) last = this.neighbor(last, -1);
         if (last >= 0) this.focusAt(last, 'end');
@@ -360,6 +364,92 @@ export class NotebookView {
   }
 
   /** Hide the cells under each collapsed divider, down to the next divider. */
+  /** The folder this notebook is in (links in its text are relative to it). */
+  private folder(): string {
+    return this.mode.kind === 'file' ? folderOf(this.mode.name) : '';
+  }
+
+  /** Every notebook's path in the journal, fetched once (for marking links to notebooks that don't exist yet). */
+  private known: Promise<Set<string>> | null = null;
+  private notebookNames(): Promise<Set<string>> {
+    if (!this.serverOk) return Promise.resolve(new Set());
+    this.known ??= api.list().then((l) => new Set(l.map((n) => n.name))).catch(() => new Set<string>());
+    return this.known;
+  }
+
+  /** Grey out links to notebooks that haven't been written yet. */
+  private markLinks(root: HTMLElement): void {
+    const links = [...root.querySelectorAll<HTMLAnchorElement>('a.notebook-link')].filter((a) => a.dataset.nb);
+    if (!links.length || !this.serverOk) return;
+    void this.notebookNames().then((names) => {
+      for (const a of links) {
+        const missing = !names.has(a.dataset.nb!);
+        a.classList.toggle('missing', missing);
+        a.title = missing ? 'Not written yet — click to start it' : '';
+      }
+    });
+  }
+
+  /**
+   * A click on a [[notebook]] link: a section of this notebook scrolls there; another notebook opens
+   * (at its section); one that doesn't exist yet can be started.
+   */
+  private followLink(a: HTMLAnchorElement, e: Event): void {
+    const name = a.dataset.nb ?? '';
+    const section = a.dataset.section ?? '';
+    const here = this.mode.kind === 'file' ? this.mode.name : '';
+    if (!name || name === here) {
+      e.preventDefault();
+      if (section) this.goToSection(section);
+      return;
+    }
+    if (!this.serverOk || this.mode.kind === 'shared') {
+      e.preventDefault();
+      toast('Links to other notebooks open in the Math Notebook app on your computer.');
+      return;
+    }
+    if (a.classList.contains('missing')) {
+      e.preventDefault();
+      const title = name.split('/').pop()!;
+      toast(`“${title}” hasn't been written yet.`, {
+        label: 'Start it',
+        run: () => void (async () => {
+          const created = await api.create(newNotebook(title), folderOf(name));
+          this.known = null;
+          location.hash = notebookHash(created.name, section);
+        })().catch((err) => toast(`Couldn't create it: ${(err as Error).message}`)),
+      }, 8000);
+    }
+  }
+
+  /** Set right after opening from a link: where to start ('' = the top) instead of the last step. */
+  private startSection: string | null = null;
+  openAt(section: string): void {
+    this.startSection = section;
+  }
+
+  /** Scroll to the section whose divider title starts with `title` (opening it if collapsed). */
+  goToSection(title: string): void {
+    const want = title.trim().toLowerCase();
+    const match = (t: string) => t.trim().toLowerCase();
+    const cell = this.nb.cells.find((c) => c.type === 'divider' && match(c.title).startsWith(want))
+      ?? this.nb.cells.find((c) => c.type === 'divider' && match(c.title).includes(want));
+    if (!cell || cell.type !== 'divider') {
+      toast(`No section called “${title}” in this notebook.`);
+      return;
+    }
+    if (cell.collapsed) {
+      cell.collapsed = false;
+      this.applyCollapse();
+      this.changed();
+    }
+    const el = this.views.get(cell.id)?.el;
+    if (!el) return;
+    el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    el.classList.add('flash');
+    setTimeout(() => el.classList.remove('flash'), 1600);
+  }
+
   private applyCollapse(): void {
     let hiding = false;
     let owner: { el: HTMLElement; count: number } | null = null;
@@ -955,8 +1045,9 @@ export class NotebookView {
 
     const renderView = () => {
       view.innerHTML = cell.text.trim()
-        ? renderMarkdown(cell.text)
+        ? renderMarkdown(cell.text, { folder: this.folder() })
         : `<p class="muted">${this.readOnly ? '' : 'Empty text — click to write notes'}</p>`;
+      this.markLinks(view);
     };
     const autosize = () => {
       area.style.height = 'auto';
@@ -976,6 +1067,8 @@ export class NotebookView {
     };
 
     view.addEventListener('click', (e) => {
+      const link = (e.target as HTMLElement).closest<HTMLAnchorElement>('a.notebook-link');
+      if (link) return this.followLink(link, e);
       if ((e.target as HTMLElement).closest('a')) return;
       setEditing(true);
       area.focus();
