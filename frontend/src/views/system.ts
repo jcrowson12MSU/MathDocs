@@ -21,6 +21,8 @@ export interface SystemEditorContext {
   leave: (dir: -1 | 1) => boolean;
   /** Enter under the line: go on to the next step. */
   next: () => void;
+  /** Practice mode: the next system starts as a plain copy (nothing multiplied or distributed). */
+  practice?: () => boolean;
   /** Add the next system below: rows with `suggestion` start empty and show it in gray. */
   continueBelow: (rows: { latex: string; suggestion?: string }[], combine: SystemCell['combine']) => void;
 }
@@ -36,7 +38,12 @@ export function setSystemSuggestions(cell: SystemCell, suggestions: (string | un
  * The next system: a row with a multiplier note is written out multiplied (3(2x−y)=3·5);
  * a multiplied row is distributed (6x−3y=15); other rows are copied. Null if nothing changes.
  */
-export function nextSystemRows(cell: SystemCell): { latex: string; suggestion?: string }[] | null {
+export function nextSystemRows(cell: SystemCell, practice = false): { latex: string; suggestion?: string }[] | null {
+  if (practice) {
+    // Practice mode: each row starts as a gray copy to rewrite; the student does the multiplying.
+    if (!cell.rows.some((r) => r.latex)) return null;
+    return cell.rows.map((r) => (r.latex ? { latex: '', suggestion: r.latex } : { latex: '' }));
+  }
   let changed = false;
   const rows = cell.rows.map((r) => {
     const multiplied = r.note && r.latex ? multiplyRow(r.latex, r.note) : null;
@@ -205,6 +212,9 @@ export function systemEditor(cell: SystemCell, ctx: SystemEditorContext) {
     grid.replaceChildren();
     cell.rows.forEach((row, i) => {
       const note = field(row.note ?? '', ctx.readOnly, 'system-note', '');
+      // In a note, * types × ("×3"), the way it's written beside an equation.
+      // (MathLive's options can only be changed once the field is on the page.)
+      note.addEventListener('mount', () => (note.inlineShortcuts = { ...note.inlineShortcuts, '*': '\\times' }), { once: true });
       const suggestion = !row.latex ? suggestions[i] : undefined;
       const eq = field(row.latex, ctx.readOnly, 'system-eq', suggestion ?? (i === 0 ? '\\text{first equation}' : '\\text{next equation}'));
       note.addEventListener('input', () => {
@@ -247,7 +257,7 @@ export function systemEditor(cell: SystemCell, ctx: SystemEditorContext) {
   };
   /** Make the next system below (multiplied or distributed rows as suggestions). False if nothing changes. */
   function continueSystem(): boolean {
-    const rows = nextSystemRows(cell);
+    const rows = nextSystemRows(cell, ctx.practice?.() ?? false);
     if (!rows) return false;
     ctx.continueBelow(rows, cell.combine);
     return true;

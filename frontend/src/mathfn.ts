@@ -250,6 +250,8 @@ function distributeSide(latex: string): string {
 export function distributeRow(row: string): string | null {
   const sides = splitRelation(row);
   if (!sides || sides[1] !== '=') return null;
+  // Nothing multiplied to write out (x + 3y = 13): leave the row exactly as the student wrote it.
+  if (!/\(|\\cdot|\\times/.test(row)) return null;
   const json = ce.parse(mixedNumbers(row)).json;
   if (hasErrors(json)) return null;
   const [left, , right] = sides;

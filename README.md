@@ -113,7 +113,29 @@ beside `2x − y = 5`) and press **Enter**. A new system appears below with that
 `3(2x − y) = 3·5`; press **→** to accept it. Press **Enter** on the empty line under it and the next system
 suggests the distributed row, `6x − 3y = 15`. Now the y terms are `+3y` and `−3y`, so write the combined
 equation (`10x = 40`) under the line yourself. Unchanged rows are copied along. You can always type your
-own row instead of accepting a suggestion.
+own row instead of accepting a suggestion. In a note, typing `*` gives **×**.
+
+### Substituting a value
+
+Once a step gives a letter's value (`x = 4`, `y = −3`, `x = ½`), choose **Substitute x = 4 into…** in its
+⋯ menu and pick one of the equations above it. The next step starts in gray with the value written in,
+`2(4) − y = 5`; press **→** to accept. Parentheses are added where they're needed (`9(−2)`, `−(−3)`, `(−2)²`),
+and the arithmetic is left to you.
+
+### "Let x = …" (word problems)
+
+**+ Let x =** between steps (or **Add “Let x = …” box below** in the ⋯ menu) adds a box for what each letter
+stands for: *x = number of months*, *y = total paid in dollars*. Graphs use the meanings of x and y as their axis
+labels unless you type labels on the graph.
+
+### Practice mode
+
+**🎓 Practice** at the top of a notebook turns the app's help off for that notebook (it's saved with it):
+next steps start as a plain copy instead of a worked-out suggestion, **Next system** copies rows instead of
+multiplying them out, **Substitute** isn't offered, graphs don't mark crossings, and slope triangles don't
+show their numbers. Turn it off to check the work.
+
+Empty exponent or subscript boxes (`x_{}`) are removed when you leave a step.
 
 ### Number lines
 
@@ -166,7 +188,9 @@ Choose **Graph this step** in a step's ⋯ menu, or open **📈 Graphs → + Add
   and ≥); inequalities in x alone, like `x > 3` or `x^2 < 9`, shade the vertical bands where they're true.
 - **Intersections**: where two lines or curves (`y = …`, or vertical lines like `x = 3`) cross, the point is
   marked with its coordinates, e.g. **(18, 70)**. Markers follow the view as you pan and zoom. Turn them off
-  with **Mark intersections** under the graph. (Circles and tables of points aren't included yet.)
+  with **Mark intersections** under the graph (practice mode hides them too). (Circles and tables of points aren't included yet.)
+- **Slope triangle** for `y = f(x)`: two dots on the line (drag them; they land on whole-number x) with the
+  run and rise drawn between them, e.g. **run = 2**, **rise = 4**. It never shows the slope itself.
 - **Calculus tools** for `y = f(x)`: derivative curve, a draggable tangent line that shows its slope, and
   shaded area under the curve between two draggable bounds.
 - **Tables of points**: type x and y values, or pick "y from …" to compute y from an expression.

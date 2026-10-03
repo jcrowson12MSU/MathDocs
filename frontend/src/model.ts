@@ -71,7 +71,15 @@ export interface SystemCell {
   comments: Comment[];
 }
 
-export type Cell = MathCell | TextCell | DividerCell | SystemCell;
+/** "Let x = months, y = cost in dollars": what each letter stands for in a word problem. */
+export interface VariablesCell {
+  id: string;
+  type: 'variables';
+  vars: { name: string; meaning: string }[];
+  comments: Comment[];
+}
+
+export type Cell = MathCell | TextCell | DividerCell | SystemCell | VariablesCell;
 
 export interface ExprItem {
   id: string;
@@ -87,6 +95,8 @@ export interface ExprItem {
   labelPos?: [number, number] | null;
   /** x position of a draggable tangent line, or null when off. */
   tangentAt?: number | null;
+  /** Two points on the line (by x) with the rise/run triangle between them, or null when off. */
+  slopeTriangle?: { x1: number; x2: number } | null;
   /** Shaded area under the curve between two draggable bounds, or null when off. */
   area?: { from: number; to: number } | null;
 }
@@ -139,6 +149,11 @@ export interface Notebook {
   modified: string;
   cells: Cell[];
   graphs: Graph[];
+  /**
+   * Practice mode: the app does no arithmetic for this notebook (next steps start as a plain copy,
+   * no multiplied/distributed rows, no substitution help) and graphs don't mark crossings.
+   */
+  practice?: boolean;
 }
 
 export const COLORS = ['#2f5bea', '#d6336c', '#2b9348', '#e8590c', '#7048e8', '#0c8599', '#495057'];
@@ -159,6 +174,20 @@ export function mathCell(latex = ''): MathCell {
 
 export function textCell(text = ''): TextCell {
   return { id: newId(), type: 'markdown', text, comments: [] };
+}
+
+export function variablesCell(vars: { name: string; meaning: string }[] = [{ name: 'x', meaning: '' }, { name: 'y', meaning: '' }]): VariablesCell {
+  return { id: newId(), type: 'variables', vars, comments: [] };
+}
+
+/** What a letter stands for, from the notebook's "Let x = …" boxes (the first one that defines it). */
+export function meaningOf(nb: Notebook, letter: string): string {
+  for (const c of nb.cells) {
+    if (c.type !== 'variables') continue;
+    const v = c.vars.find((v) => v.name.trim() === letter && v.meaning.trim());
+    if (v) return v.meaning.trim();
+  }
+  return '';
 }
 
 export function systemCell(rows: string[] = ['', '']): SystemCell {
@@ -248,6 +277,12 @@ export function normalize(raw: unknown): Notebook {
       if (c.type === 'divider') {
         return { id, type: 'divider', title: String(c.title ?? ''), collapsed: !!c.collapsed, comments };
       }
+      if (c.type === 'variables') {
+        const vars = (Array.isArray(c.vars) ? c.vars : [])
+          .filter((v: any) => v && typeof v === 'object')
+          .map((v: any) => ({ name: String(v.name ?? ''), meaning: String(v.meaning ?? '') }));
+        return { id, type: 'variables', vars: vars.length ? vars : [{ name: 'x', meaning: '' }], comments };
+      }
       if (c.type === 'system') {
         const rows = (Array.isArray(c.rows) ? c.rows : [])
           .filter((r: any) => r && typeof r === 'object')
@@ -279,6 +314,7 @@ export function normalize(raw: unknown): Notebook {
     modified: typeof r.modified === 'string' ? r.modified : base.modified,
     cells: cells.length ? cells : [mathCell()],
     graphs,
+    ...(r.practice === true ? { practice: true } : {}),
   };
 }
 

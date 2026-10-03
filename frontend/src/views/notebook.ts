@@ -4,9 +4,10 @@ import { MathfieldElement } from 'mathlive';
 import { api } from '../api';
 import { saveIncoming } from '../incoming';
 import { renderMarkdown } from '../markdown';
+import katex from 'katex';
 import { applyOperation } from '../mathfn';
 import {
-  dividerCell, mathCell, newId, nowIso, systemCell, textCell,
+  dividerCell, mathCell, meaningOf, newId, nowIso, systemCell, textCell, variablesCell,
   type Cell, type DividerCell, type MathCell, type Notebook, type TextCell,
 } from '../model';
 import { loadSettings, saveSettings, shareBase } from '../settings';
@@ -17,6 +18,8 @@ import { GraphPanel } from './graphs';
 import { focusable } from './mathfield';
 import { WorkRow, hasRelation, leftSideEnd } from './workrow';
 import { nextSystemRows, setSystemSuggestions, systemEditor } from './system';
+import { variablesEditor } from './variables';
+import { cleanLatex, substitute, valueStep } from '../substitute';
 import { solutionSet } from '../inequality';
 import { renderNumberLine } from './numberline';
 
@@ -89,7 +92,7 @@ export class NotebookView {
   constructor(private nb: Notebook, private mode: Mode, private serverOk: boolean) {
     this.readOnly = mode.kind === 'shared';
     this.graphsOpen = nb.graphs.length > 0;
-    this.graphs = new GraphPanel(nb, { readOnly: this.readOnly, onChange: () => this.changed() });
+    this.graphs = new GraphPanel(nb, this.graphOptions());
     this.render();
     window.addEventListener('beforeunload', this.onUnload);
     window.addEventListener('keydown', this.onPageKey);
@@ -128,6 +131,9 @@ export class NotebookView {
         : h('span', { class: 'nb-title static' }, m.kind === 'scratch' ? 'Scratch pad' : this.nb.title);
 
     const graphsBtn = h('button', { class: 'btn', title: 'Show or hide graphs' }, '📈 Graphs');
+    const practiceBtn = h('button', { class: 'btn practice-btn', title: 'Practice mode: the app does no arithmetic and graphs don’t mark crossings' });
+    practiceBtn.addEventListener('click', () => this.togglePractice(practiceBtn));
+    queueMicrotask(() => this.showPractice(practiceBtn));
     graphsBtn.addEventListener('click', () => this.toggleGraphs());
 
     const buttons: (HTMLElement | null)[] = [
@@ -136,6 +142,7 @@ export class NotebookView {
       h('button', { class: 'btn', onclick: () => this.share() }, this.readOnly ? 'Share back' : 'Share'),
       h('button', { class: 'btn', title: 'Download as a .mathnb.json file', onclick: () => this.exportFile() }, 'Export'),
       h('button', { class: 'btn', title: 'Print, or save as PDF from the print dialog', onclick: () => this.print() }, '🖨 Print'),
+      this.readOnly ? null : practiceBtn,
     ];
     if (m.kind === 'scratch') {
       buttons.unshift(
@@ -168,6 +175,33 @@ export class NotebookView {
     return h('div', { class: 'banner' },
       'You’re viewing a shared notebook. The work is read-only, but you can add comments to any step and then use ',
       h('b', {}, 'Share back'), ' to send it back.');
+  }
+
+  private graphOptions() {
+    return {
+      readOnly: this.readOnly,
+      onChange: () => this.changed(),
+      practice: () => !!this.nb.practice,
+      // Axis labels default to what x and y stand for in the notebook's "Let x = …" boxes.
+      axisDefaults: () => ({ x: meaningOf(this.nb, 'x'), y: meaningOf(this.nb, 'y') }),
+    };
+  }
+
+  /** Practice mode: no arithmetic from the app and no crossing markers, until it's turned off. */
+  private togglePractice(btn: HTMLElement): void {
+    this.nb.practice = this.nb.practice ? undefined : true;
+    this.showPractice(btn);
+    this.graphs.refresh();
+    this.changed();
+    toast(this.nb.practice
+      ? 'Practice mode on: next steps start as a plain copy, and graphs don’t mark crossings.'
+      : 'Practice mode off: suggestions and crossing markers are back.');
+  }
+
+  private showPractice(btn: HTMLElement): void {
+    btn.classList.toggle('active', !!this.nb.practice);
+    btn.textContent = this.nb.practice ? '🎓 Practice: on' : '🎓 Practice';
+    this.el.classList.toggle('practice', !!this.nb.practice);
   }
 
   private toggleGraphs(): void {
@@ -340,6 +374,7 @@ export class NotebookView {
       cell.type === 'math' ? cell.latex.trim() || cell.operation
       : cell.type === 'markdown' ? cell.text.trim()
       : cell.type === 'system' ? cell.rows.some((r) => r.latex.trim()) || cell.result.trim()
+      : cell.type === 'variables' ? cell.vars.some((v) => v.meaning.trim())
       : cell.title.trim();
     if (hasContent || cell.comments.length) {
       toast('Cell deleted.', { label: 'Undo', run: () => this.insertCell(Math.min(i, this.nb.cells.length), cell) }, 6000);
@@ -361,6 +396,57 @@ export class NotebookView {
     this.focusAt(this.index(id), 'end');
   }
 
+  /**
+   * "Substitute x = 4 into…": pick an earlier equation; the next step starts as that equation with the
+   * value written in (2x − y = 5 → 2(4) − y = 5) as a gray suggestion. The arithmetic is left to the student.
+   */
+  private substituteFrom(cell: MathCell): void {
+    const found = valueStep(cell.latex);
+    if (!found) return;
+    const { variable, value } = found;
+    const here = this.index(cell.id);
+    const candidates: string[] = [];
+    for (let k = here - 1; k >= 0 && candidates.length < 12; k--) {
+      const c = this.nb.cells[k];
+      const latexes = c.type === 'math' ? [c.latex] : c.type === 'system' ? c.rows.map((r) => r.latex).reverse() : [];
+      for (const raw of latexes) {
+        const l = cleanLatex(raw);
+        // Equations that use the letter (and aren't themselves just "x = …").
+        if (!hasRelation(l) || valueStep(l) || substitute(l, variable, value) === l || candidates.includes(l)) continue;
+        candidates.push(l);
+      }
+    }
+    if (!candidates.length) {
+      toast(`No equation with ${variable} above this step to substitute into.`);
+      return;
+    }
+    const list = h('div', { class: 'subst-list' },
+      ...candidates.map((l) => {
+        const b = h('button', { class: 'subst-choice' });
+        b.innerHTML = katex.renderToString(l, { throwOnError: false });
+        b.addEventListener('click', () => {
+          (b.closest('dialog') as HTMLDialogElement | null)?.querySelector<HTMLButtonElement>('.dialog-buttons .btn')?.click();
+          const filled = substitute(l, variable, value);
+          const after = this.nb.cells[this.index(cell.id) + 1];
+          // An empty step right below is used instead of adding another.
+          if (after?.type === 'math' && !after.latex.trim()) {
+            this.views.get(after.id)?.suggest?.(filled);
+            this.focusAt(this.index(after.id), 'start');
+            return;
+          }
+          const next = mathCell();
+          this.insertCell(this.index(cell.id) + 1, next);
+          this.views.get(next.id)?.suggest?.(filled);
+        });
+        return b;
+      }),
+    );
+    void showDialog(`Substitute ${variable} = ${value.replace(/\\left|\\right/g, '')} into which equation?`, [
+      h('p', { class: 'muted small' }, 'The next step will start with the value written in (press → to accept). You do the arithmetic.'),
+      list,
+    ], [{ label: 'Cancel' }]);
+  }
+
   /** Enter in a math step: go to the next step, making one if needed. */
   private nextStep(id: string, copy: boolean): void {
     const i = this.index(id);
@@ -368,7 +454,7 @@ export class NotebookView {
     const latex = cell.type === 'math' ? cell.latex : cell.type === 'system' ? cell.result : '';
     // With an operation under the step (e.g. −3 under both sides), suggest its simplified result.
     const op = cell.type === 'math' ? cell.operation?.latex : undefined;
-    const suggestion = (op && applyOperation(latex, op)) || latex;
+    const suggestion = (!this.nb.practice && op && applyOperation(latex, op)) || latex;
     const next = this.nb.cells[i + 1];
     if (!copy && next?.type === 'math' && !next.latex.trim()) {
       this.views.get(next.id)?.suggest?.(suggestion);
@@ -387,7 +473,7 @@ export class NotebookView {
     for (const cell of this.nb.cells) {
       const v = this.views.get(cell.id);
       if (!v) continue;
-      if (cell.type === 'markdown' || cell.type === 'divider') {
+      if (cell.type === 'markdown' || cell.type === 'divider' || cell.type === 'variables') {
         n = 0;
         v.numberEl.textContent = '';
       } else {
@@ -448,12 +534,28 @@ export class NotebookView {
             return true;
           },
           next: () => this.nextStep(cell.id, false),
+          practice: () => !!this.nb.practice,
           continueBelow: (rows, combine) => {
             const next = systemCell(rows.map((r) => r.latex));
             next.combine = combine;
             setSystemSuggestions(next, rows.map((r) => r.suggestion));
             this.insertCell(this.index(cell.id) + 1, next);
           },
+        })
+      : cell.type === 'variables' ? variablesEditor(cell, {
+          readOnly: this.readOnly,
+          onChange: () => {
+            this.changed();
+            this.graphs.refreshAxisLabels();
+          },
+          cellKeys: (e) => this.cellKeys(e, cell),
+          leave: (dir) => {
+            const j = this.neighbor(this.index(cell.id), dir);
+            if (j < 0) return false;
+            this.focusAt(j, dir < 0 ? 'end' : 'start');
+            return true;
+          },
+          next: () => this.nextStep(cell.id, false),
         })
       : this.dividerEditor(cell, el);
 
@@ -487,6 +589,12 @@ export class NotebookView {
         isMath && edit && hasRelation(cell.latex)
           ? { label: '±  Same to both sides', hint: 'Shift+↓', run: () => content.openWork?.() }
           : null,
+        isMath && edit && !this.nb.practice && valueStep(cell.latex)
+          ? {
+              label: `↪  Substitute ${valueStep(cell.latex)!.variable} = ${valueStep(cell.latex)!.value.replace(/\\left|\\right/g, '')} into…`,
+              run: () => this.substituteFrom(cell as MathCell),
+            }
+          : null,
         isMath && (edit || cell.numberLine)
           ? { label: cell.numberLine ? '⟷  Hide number line' : '⟷  Show number line', run: () => content.toggleNumberLine?.() }
           : null,
@@ -499,8 +607,8 @@ export class NotebookView {
               },
             }
           : null,
-        cell.type === 'system' && edit && nextSystemRows(cell)
-          ? { label: '↓  Next system (multiply / distribute)', hint: '↵ in a note', run: () => content.continueSystem?.() }
+        cell.type === 'system' && edit && nextSystemRows(cell, !!this.nb.practice)
+          ? { label: this.nb.practice ? '↓  Next system (copy)' : '↓  Next system (multiply / distribute)', hint: '↵ in a note', run: () => content.continueSystem?.() }
           : null,
         cell.type === 'system' && edit && cell.rows.some((r) => r.latex.trim())
           ? {
@@ -518,6 +626,7 @@ export class NotebookView {
               { label: 'Add text below', hint: '⌥↵', run: () => this.insertCell(at(), textCell()) },
               { label: 'Add divider below', hint: '⌥H', run: () => this.insertCell(at(), dividerCell()) },
               { label: 'Add system (elimination) below', hint: '⌥S', run: () => this.insertCell(at(), systemCell()) },
+              { label: 'Add “Let x = …” box below', run: () => this.insertCell(at(), variablesCell()) },
               null,
               { label: 'Move up', hint: '⌥↑', run: () => this.moveCell(cell.id, -1) },
               { label: 'Move down', hint: '⌥↓', run: () => this.moveCell(cell.id, 1) },
@@ -534,6 +643,7 @@ export class NotebookView {
       h('button', { onclick: () => this.insertCell(this.index(cell.id) + 1, textCell()) }, '+ Text'),
       h('button', { onclick: () => this.insertCell(this.index(cell.id) + 1, dividerCell()) }, '+ Divider'),
       h('button', { onclick: () => this.insertCell(this.index(cell.id) + 1, systemCell()) }, '+ System'),
+      h('button', { onclick: () => this.insertCell(this.index(cell.id) + 1, variablesCell()) }, '+ Let x ='),
     );
 
     el.append(h('div', { class: 'gutter' }, numberEl), h('div', { class: 'cell-body' }, content.el, commentsEl), actions);
@@ -594,7 +704,7 @@ export class NotebookView {
       );
     };
     const contentChanged = () => {
-      cell.latex = mf.value;
+      cell.latex = cleanLatex(mf.value);
       if (suggestion && mf.value) suggest('');
       updateCanWork();
       work.scheduleLayout();
@@ -606,7 +716,15 @@ export class NotebookView {
       this.lastMathfield = mf;
       el.classList.add('focused');
     });
-    mf.addEventListener('blur', () => el.classList.remove('focused'));
+    mf.addEventListener('blur', () => {
+      el.classList.remove('focused');
+      // An exponent or subscript box left empty (x_{}) is removed when you leave the step.
+      const clean = cleanLatex(mf.value);
+      if (clean !== mf.value) {
+        mf.value = clean;
+        contentChanged();
+      }
+    });
     mf.addEventListener('move-out', (e) => {
       const dir = e.detail.direction;
       if (dir !== 'upward' && dir !== 'downward') return;
@@ -973,7 +1091,7 @@ export class NotebookView {
     this.nb.cells = [mathCell()];
     this.nb.graphs = [];
     this.graphs.destroy();
-    this.graphs = new GraphPanel(this.nb, { readOnly: false, onChange: () => this.changed() });
+    this.graphs = new GraphPanel(this.nb, this.graphOptions());
     this.render();
     this.changed();
   }

@@ -468,3 +468,33 @@ math-field.system-eq {
 }
 /* The same layout on screen while the Print button prepares the page (graphs size themselves to it). */
 body.printing .graph-panel { width: 6in !important; flex: none !important; }
+
+/* "Let x = …" box: what each letter stands for in a word problem. */
+.vars-box { display: flex; gap: 10px; align-items: flex-start; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; }
+.vars-head { font-style: italic; font-weight: 600; padding-top: 5px; color: var(--muted); }
+.vars-list { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }
+.var-row { display: flex; align-items: center; gap: 6px; }
+.var-row input { font: inherit; border: 1px solid transparent; border-radius: 6px; padding: 3px 6px; background: transparent; color: inherit; }
+.var-row input:hover, .var-row input:focus { border-color: var(--line); outline: none; }
+.var-row input:focus { border-color: var(--accent); }
+.var-name { width: 3em; text-align: center; font-family: 'KaTeX_Math', 'Times New Roman', serif; font-style: italic; font-size: 1.15em; }
+.var-meaning { flex: 1; min-width: 0; }
+.var-eq { color: var(--muted); }
+.var-row .icon.tiny { opacity: 0; font-size: 11px; padding: 2px 5px; }
+.var-row:hover .icon.tiny { opacity: 0.7; }
+.vars-add { align-self: flex-start; margin-left: 4px; }
+
+/* Practice mode */
+.btn.practice-btn.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.practice-note { align-self: center; }
+.practice-note[hidden] { display: none; }
+
+/* "Substitute x = 4 into…" picker */
+.subst-list { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }
+.subst-choice { text-align: left; font-size: 1.1em; padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: inherit; cursor: pointer; }
+.subst-choice:hover { border-color: var(--accent); }
+.subst-choice:focus-visible { border-color: var(--accent); background: var(--accent-soft); outline: none; }
+
+@media print {
+  .practice-btn, .vars-add, .var-row .icon.tiny, .practice-note { display: none !important; }
+}

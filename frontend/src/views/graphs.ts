@@ -16,6 +16,10 @@ const round = (n: number) => Math.round(n * 100) / 100;
 interface PanelOptions {
   readOnly: boolean;
   onChange: () => void;
+  /** Practice mode: don't mark crossings or give the slope triangle's numbers. */
+  practice?: () => boolean;
+  /** Axis labels to use when a graph has none of its own (what x and y stand for in "Let x = …"). */
+  axisDefaults?: () => { x: string; y: string };
 }
 
 export class GraphPanel {
@@ -40,6 +44,11 @@ export class GraphPanel {
   /** Draw boards after the panel becomes visible (JSXGraph needs real dimensions). */
   refresh(): void {
     this.cards.forEach((c) => c.buildBoard());
+  }
+
+  /** The "Let x = …" meanings changed: update axis labels that come from them. */
+  refreshAxisLabels(): void {
+    this.cards.forEach((c) => c.showAxisLabels());
   }
 
   addGraph(): Graph {
@@ -95,6 +104,8 @@ class GraphCard {
 
   private xAxisLabel = h('div', { class: 'axis-label x' });
   private yAxisLabel = h('div', { class: 'axis-label y' });
+  private axisInputs: Partial<Record<'x' | 'y', HTMLInputElement>> = {};
+  private practiceNote = h('span', { class: 'muted small practice-note', hidden: true }, 'Practice mode: crossings aren’t marked');
 
   constructor(private graph: Graph, private opts: PanelOptions, onDelete: () => void) {
     this.boardDiv = h('div', { class: 'board', id: `board-${graph.id}-${Math.random().toString(36).slice(2)}` });
@@ -105,6 +116,7 @@ class GraphCard {
         class: 'axis-input', value: graph[key] ?? '',
         placeholder: axis === 'x' ? 'e.g. time (hours)' : 'e.g. height (cm)',
       });
+      this.axisInputs[axis] = input;
       input.addEventListener('input', () => {
         graph[key] = input.value || undefined;
         this.showAxisLabels();
@@ -129,7 +141,8 @@ class GraphCard {
       ),
       h('div', { class: 'board-wrap' }, this.yAxisLabel, h('div', { class: 'board-col' }, this.boardDiv, this.xAxisLabel)),
       ro ? null : h('div', { class: 'axis-fields' }, axisInput('x'), axisInput('y'),
-        this.toggle('Mark intersections', graph.intersections !== false, (on) => (graph.intersections = on ? undefined : false))),
+        this.toggle('Mark intersections', graph.intersections !== false, (on) => (graph.intersections = on ? undefined : false)),
+        this.practiceNote),
       this.itemsEl,
       ro ? null : h('div', { class: 'graph-add' },
         h('button', { class: 'btn small', onclick: () => this.addItem(exprItem('', nextColor(graph))) }, '+ Expression'),
@@ -188,9 +201,15 @@ class GraphCard {
     }
   };
 
-  private showAxisLabels(): void {
-    this.xAxisLabel.textContent = this.graph.xLabel ?? '';
-    this.yAxisLabel.textContent = this.graph.yLabel ?? '';
+  showAxisLabels(): void {
+    // A label typed on the graph wins; otherwise use what x and y stand for in the "Let x = …" box.
+    const defaults = this.opts.axisDefaults?.() ?? { x: '', y: '' };
+    this.xAxisLabel.textContent = this.graph.xLabel ?? defaults.x;
+    this.yAxisLabel.textContent = this.graph.yLabel ?? defaults.y;
+    for (const axis of ['x', 'y'] as const) {
+      const input = this.axisInputs[axis];
+      if (input && defaults[axis]) input.placeholder = defaults[axis];
+    }
   }
 
   private addNote(): void {
@@ -291,6 +310,7 @@ class GraphCard {
       if (a.kind === 'function' && !this.opts.readOnly) {
         tools.append(
           this.toggle('f′ derivative', !!item.showDerivative, (on) => (item.showDerivative = on)),
+          this.toggle('Slope triangle', item.slopeTriangle != null, (on) => (item.slopeTriangle = on ? { x1: 0, x2: 1 } : null)),
           this.toggle('Tangent line', item.tangentAt != null, (on) => (item.tangentAt = on ? 1 : null)),
           this.toggle('Area under curve', item.area != null, (on) => (item.area = on ? { from: 0, to: 2 } : null)),
         );
@@ -448,6 +468,7 @@ class GraphCard {
   // -- drawing -------------------------------------------------------------------
 
   buildBoard(): void {
+    this.showAxisLabels();
     if (!this.boardDiv.isConnected || this.boardDiv.clientWidth === 0) return;
     if (this.board) JXG.JSXGraph.freeBoard(this.board);
     const board: any = JXG.JSXGraph.initBoard(this.boardDiv.id, {
@@ -491,7 +512,9 @@ class GraphCard {
     if (!board) return;
     for (const el of this.crossings) board.removeObject(el);
     this.crossings = [];
-    if (this.graph.intersections === false) return;
+    const practice = this.opts.practice?.() ?? false;
+    this.practiceNote.hidden = !practice || this.graph.intersections === false;
+    if (this.graph.intersections === false || practice) return;
 
     const curves: ((x: number) => number)[] = [];
     const verticals: number[] = [];
@@ -643,6 +666,8 @@ class GraphCard {
       board.create('functiongraph', [derivative(f)], { strokeColor: color, strokeWidth: 1.5, dash: 2, highlight: false });
     }
 
+    if (item.slopeTriangle) this.drawSlopeTriangle(board, item, f, color, syncers);
+
     if (item.tangentAt != null) {
       const x0 = item.tangentAt;
       const g = board.create('glider', [x0, f(x0), curve], { name: '', size: 5, fillColor: color, strokeColor: color });
@@ -681,6 +706,48 @@ class GraphCard {
         return true;
       });
     }
+  }
+
+  /**
+   * Two points on the line (dragged along it, landing on whole-number x) and the right triangle between
+   * them: run across, rise up. It shows rise and run, never the slope, so the dividing is left to the student.
+   * In practice mode the numbers are left off too.
+   */
+  private drawSlopeTriangle(board: any, item: ExprItem, f: (x: number) => number, color: string, syncers: (() => boolean)[]): void {
+    const tri = item.slopeTriangle!;
+    const practice = this.opts.practice?.() ?? false;
+    const opts = { size: 5, fillColor: color, strokeColor: color, strokeWidth: 2, withLabel: false, fixed: this.opts.readOnly, showInfobox: false, name: '' };
+    const p1: any = board.create('point', [tri.x1, f(tri.x1)], opts);
+    const p2: any = board.create('point', [tri.x2, f(tri.x2)], opts);
+    for (const p of [p1, p2]) {
+      if (!practice) {
+        board.create('text', [() => p.X(), () => p.Y(), () => `(${fmt(p.X())}, ${fmt(p.Y())})  `], {
+          anchorX: 'right', anchorY: 'bottom', fontSize: 13, strokeColor: color, fixed: true, highlight: false,
+        });
+      }
+      // Dragged anywhere, a point lands back on the line at the nearest whole-number x.
+      p.on('drag', () => {
+        const x = Math.round(p.X());
+        const y = f(x);
+        if (Number.isFinite(y)) p.setPositionDirectly(JXG.COORDS_BY_USER, [x, y]);
+      });
+    }
+    const corner: any = board.create('point', [() => p2.X(), () => p1.Y()], { visible: false, withLabel: false, name: '' });
+    const side = { strokeColor: '#e8590c', strokeWidth: 2, dash: 2, highlight: false, fixed: true };
+    board.create('segment', [p1, corner], side);
+    board.create('segment', [corner, p2], side);
+    const text = { fontSize: 13, strokeColor: '#e8590c', fixed: true, highlight: false };
+    board.create('text', [() => (p1.X() + p2.X()) / 2, () => p1.Y(),
+      () => (practice ? 'run' : `run = ${fmt(p2.X() - p1.X())}`)], { ...text, anchorX: 'middle', anchorY: p2.Y() >= p1.Y() ? 'top' : 'bottom' });
+    board.create('text', [() => p2.X(), () => (p1.Y() + p2.Y()) / 2,
+      () => (practice ? '  rise' : `  rise = ${fmt(p2.Y() - p1.Y())}`)], { ...text, anchorX: 'left', anchorY: 'middle' });
+    syncers.push(() => {
+      const x1 = Math.round(p1.X());
+      const x2 = Math.round(p2.X());
+      if (x1 === tri.x1 && x2 === tri.x2) return false;
+      item.slopeTriangle = { x1, x2 };
+      return true;
+    });
   }
 
   private drawTable(board: any, item: TableItem, syncers: (() => boolean)[]): void {

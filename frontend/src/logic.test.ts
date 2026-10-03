@@ -4,6 +4,7 @@ import { mathCell, mergeComments, type MathCell, newNotebook, normalize, parseNu
 import { decodeNotebook, encodeNotebook, shareLink } from './share';
 import { solutionSet, yRegion } from './inequality';
 import { splitMath } from './markdown';
+import { cleanLatex, substitute, valueStep } from './substitute';
 import { columnAt, groupTerms, hasRelation, nearestColumn, type Atom } from './views/workrow';
 
 /** Fake measured atoms: each token 10px wide; null = nested inside the previous atom. */
@@ -311,6 +312,40 @@ describe('multiplying a row of a system', () => {
     expect(distributeRow('\\left(-2\\right)\\left(3x+2y\\right)=\\left(-2\\right)\\cdot\\left(-4\\right)')).toBe('-6x-4y=8');
     expect(distributeRow('-3\\left(-y+2x\\right)=6')).toBe('-6x+3y=6');
     expect(distributeRow('4x+3y=25')).toBeNull(); // nothing to do
+    expect(distributeRow('x+3y=13')).toBeNull(); // not reordered to 3y + x
+  });
+});
+
+describe('substitution', () => {
+  it('reads a value from a step like x = 4', () => {
+    expect(valueStep('x=4')).toEqual({ variable: 'x', value: '4' });
+    expect(valueStep('y=-3')).toEqual({ variable: 'y', value: '-3' });
+    expect(valueStep('-2=x')).toEqual({ variable: 'x', value: '-2' });
+    expect(valueStep('x=\\frac{1}{2}')).toEqual({ variable: 'x', value: '\\frac{1}{2}' });
+    expect(valueStep('x_{}=4')).toEqual({ variable: 'x', value: '4' });
+    expect(valueStep('y=2x-5')).toBeNull(); // not a value yet
+    expect(valueStep('2x=8')).toBeNull();
+  });
+
+  it('writes the value in, with parentheses only where needed', () => {
+    expect(substitute('2x-y=5', 'x', '4')).toBe('2\\left(4\\right)-y=5');
+    expect(substitute('x+3y=10', 'x', '4')).toBe('4+3y=10');
+    expect(substitute('9x+12y=30', 'x', '-2')).toBe('9\\left(-2\\right)+12y=30');
+    expect(substitute('2x-y=5', 'y', '-3')).toBe('2x-\\left(-3\\right)=5');
+    expect(substitute('x^2+x=6', 'x', '2')).toBe('2^2+2=6');
+    expect(substitute('x^2=6', 'x', '-2')).toBe('\\left(-2\\right)^2=6');
+    expect(substitute('\\frac{x}{2}=3', 'x', '6')).toBe('\\frac{6}{2}=3');
+  });
+
+  it('leaves commands and other variables alone', () => {
+    expect(substitute('3\\times x=x_1', 'x', '4')).toBe('3\\times 4=x_1');
+    expect(substitute('\\max(x,2)', 'x', '5')).toBe('\\max(5,2)');
+  });
+
+  it('cleans up empty subscripts and exponents', () => {
+    expect(cleanLatex('y_{}=\\frac56x_{}+55')).toBe('y=\\frac56x+55');
+    expect(cleanLatex('x^{}+1')).toBe('x+1');
+    expect(cleanLatex('x_{1}+y^{2}')).toBe('x_{1}+y^{2}');
   });
 });
 
