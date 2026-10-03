@@ -263,6 +263,8 @@ describe('inequalities', () => {
   it('handles "or", "and", and absolute value both ways round', () => {
     expect(set('x<-1\\text{ or }x\\ge4')).toBe('(-∞, -1) ∪ [4, ∞)');
     expect(set('x>2\\text{ and }x\\le6')).toBe('(2, 6]');
+    // As typed: "or" / "and" become upright words (MathLive writes \operatorname{\mathrm{or}}).
+    expect(set('x<-1\\;\\operatorname{\\mathrm{or}}\\;x\\ge4')).toBe('(-∞, -1) ∪ [4, ∞)');
     expect(set('-3\\le2x+1<5')).toBe('[-2, 2)');
     expect(set('\\left|x-3\\right|<5')).toBe('(-2, 8)');
     expect(set('\\left|x-3\\right|\\ge5')).toBe('(-∞, -2] ∪ [8, ∞)');

@@ -24,6 +24,8 @@ export function focusable(mf: MathfieldElement, onMount?: () => void): (where: W
   };
   mf.addEventListener('mount', () => {
     mounted = true;
+    // Typing "or" / "and" writes the word, as in x < −1 or x ≥ 4 (MathLive's default is the logic symbol ∨ / ∧).
+    mf.inlineShortcuts = { ...mf.inlineShortcuts, or: '\\;\\operatorname{or}\\;', and: '\\;\\operatorname{and}\\;' };
     onMount?.();
     if (pending !== null) focusNow(pending);
     pending = null;
