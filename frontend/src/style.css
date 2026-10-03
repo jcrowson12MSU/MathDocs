@@ -105,7 +105,7 @@ kbd {
 
 /* Work | splitter | graphs. The graph width is --graphs-w (set by dragging the splitter). */
 .nb-main { flex: 1; display: flex; min-height: 0; --graphs-w: 44%; }
-.work { flex: 1 1 0; min-width: 0; overflow-y: auto; padding: 24px 16px 40vh; }
+.work { flex: 1 1 0; min-width: 0; overflow-y: auto; padding: 14px 16px 40vh; }
 .graph-panel { display: none; flex: 0 0 var(--graphs-w); width: var(--graphs-w); min-width: 300px; overflow-y: auto; background: var(--bg); padding: 14px; }
 .graphs-open .graph-panel { display: block; }
 .work-hidden .work { display: none; }
@@ -145,7 +145,7 @@ kbd {
   position: relative; display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; gap: 6px;
   align-items: start; padding: 2px 0;
 }
-.gutter { text-align: right; padding-top: 14px; }
+.gutter { text-align: right; padding-top: 8px; }
 .step-num { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .cell-body { min-width: 0; }
 
@@ -161,30 +161,30 @@ math-field:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var
 
 /* A step's white box holds the expression and, under it, the operation done to both sides. */
 .step-box {
-  position: relative; background: var(--paper); border: 1px solid transparent; border-radius: 10px;
-  padding: 10px 16px; box-shadow: 0 1px 0 var(--line);
+  position: relative; background: var(--paper); border: 1px solid transparent; border-radius: 8px;
+  padding: 3px 12px; box-shadow: 0 1px 0 var(--line);
 }
 .step-box:hover { border-color: var(--line); }
 .cell.math.focused .step-box, .step-box:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .step-box > math-field {
-  font-size: 24px; padding: 4px 0; min-height: 40px;
+  font-size: 24px; padding: 2px 0; min-height: 0;
   border: none !important; box-shadow: none !important; background: transparent;
 }
 /* With an operation underneath, keep it close to the expression. */
 .step-box:has(> .work-row:not([hidden])) > math-field { padding-bottom: 0; min-height: 0; }
-.cell.math .gutter { padding-top: 22px; }
+.cell.math .gutter { padding-top: 13px; }
 .cell.math:not(.can-work) .work-btn { display: none; }
 math-field::part(menu-toggle) { display: none; }
 math-field::part(virtual-keyboard-toggle) { display: none; }
 math-field[read-only] { box-shadow: none; }
 
 .cell.markdown .md-view {
-  padding: 4px 10px; border-radius: 8px; cursor: text; line-height: 1.55; min-height: 34px;
+  padding: 2px 10px; border-radius: 8px; cursor: text; line-height: 1.5; min-height: 28px;
 }
 .cell.markdown .md-view:hover { background: var(--paper); }
 .cell.markdown .md-view:focus { outline: 2px solid var(--accent-soft); }
-.md-view > :first-child { margin-top: 6px; }
-.md-view > :last-child { margin-bottom: 6px; }
+.md-view > :first-child { margin-top: 3px; }
+.md-view > :last-child { margin-bottom: 3px; }
 .md-view h1, .md-view h2, .md-view h3 { font-family: Georgia, 'Times New Roman', serif; margin: 18px 0 6px; }
 .md-view h1 { font-size: 24px; } .md-view h2 { font-size: 20px; } .md-view h3 { font-size: 17px; }
 .md-view code { background: var(--accent-soft); padding: 1px 4px; border-radius: 4px; }
@@ -195,7 +195,7 @@ math-field[read-only] { box-shadow: none; }
 }
 
 /* Right of each cell: the comment count (only when there are comments) and the ⋯ menu. */
-.cell-actions { display: flex; align-items: center; gap: 2px; padding-top: 10px; }
+.cell-actions { display: flex; align-items: center; gap: 2px; padding-top: 4px; }
 .cell-actions .comment-btn { display: none; }
 .cell-actions .comment-btn.has-comments { display: inline-block; color: var(--comment-ink); background: var(--comment); }
 .cell-actions .menu-btn { font-size: 18px; padding: 2px 7px; opacity: 0; transition: opacity 0.12s; }
@@ -321,10 +321,10 @@ math-field.work-copy.dragging { cursor: grabbing; border-color: var(--work); bac
 math-field.work-copy[read-only] { cursor: default; border-color: transparent !important; }
 
 /* ---------- dividers ---------- */
-.cell.divider { margin-top: 18px; }
+.cell.divider { margin-top: 10px; }
 .cell.divider:first-child { margin-top: 0; }
 .divider-bar {
-  display: flex; align-items: center; gap: 6px; padding: 4px 6px 6px 0;
+  display: flex; align-items: center; gap: 6px; padding: 2px 6px 3px 0;
   border-bottom: 2px solid var(--line);
 }
 .cell.divider.focused .divider-bar { border-bottom-color: var(--accent); }
