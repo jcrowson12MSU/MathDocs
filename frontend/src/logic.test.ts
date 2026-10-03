@@ -112,6 +112,24 @@ describe('analyze', () => {
     expect(analyze('x=3')).toEqual({ kind: 'verticals', xs: [3] });
   });
 
+  it('draws standard-form equations as lines (y solved for), so crossings get marked', () => {
+    // From "Elimination Practice": 9x + 12y = 30 and 8x − 12y = −64 cross at (−2, 4).
+    const a = analyze('9x+12y=30');
+    const b = analyze('8x-12y=-64');
+    expect(a.kind).toBe('function');
+    expect(b.kind).toBe('function');
+    if (a.kind !== 'function' || b.kind !== 'function') return;
+    expect(a.f(0, {})).toBeCloseTo(2.5, 9);
+    const xs = intersections((x) => a.f(x, {}), (x) => b.f(x, {}), -10, 10);
+    expect(xs.map((x) => +x.toFixed(9))).toEqual([-2]);
+    expect(a.f(-2, {})).toBeCloseTo(4, 9);
+    // Letters still become sliders.
+    const p = analyze('ax+by=c');
+    expect(p.kind === 'function' && p.params).toEqual(['a', 'b', 'c']);
+    expect(analyze('x^2+y=4').kind).toBe('function');
+    expect(analyze('x^2+y^2=25').kind).toBe('implicit'); // two y values for each x
+  });
+
   it('draws an equation in x alone as vertical lines at its solutions', () => {
     const one = analyze('2x+3=5x-8');
     expect(one.kind === 'verticals' && one.xs.map((x) => +x.toFixed(6))).toEqual([3.666667]);

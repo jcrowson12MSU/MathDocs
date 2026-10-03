@@ -94,8 +94,14 @@ export function analyze(latex: string): Plottable {
       // Drawing it as a curve in x and y would be slow and show the same thing.
       return verticals(json);
     } else {
-      body = ['Subtract', lhs, rhs];
-      implicit = true;
+      // Standard form like 9x + 12y = 30: if it has exactly one solution for y, draw y = (30 − 9x)/12 —
+      // fast, and its crossings get marked. Otherwise (a circle has two) draw the implicit curve.
+      const solved = solveForY(json);
+      if (solved !== null) body = solved;
+      else {
+        body = ['Subtract', lhs, rhs];
+        implicit = true;
+      }
     }
   } else if (symbolsIn(json).has('y')) {
     return { kind: 'error', message: 'Write it as an equation, like x^2 + y^2 = 25' };
@@ -119,9 +125,22 @@ const ALGEBRAIC = new Set(['Equal', 'Add', 'Subtract', 'Multiply', 'Divide', 'Ne
 function isAlgebraic(json: Json): boolean {
   if (!Array.isArray(json)) return true;
   if (!ALGEBRAIC.has(json[0])) return false;
-  // x in an exponent (2^x = 8) isn't something we solve here.
-  if ((json[0] === 'Power' || json[0] === 'Root') && symbolsIn(json[2]).has('x')) return false;
+  // x or y in an exponent (2^x = 8) isn't something we solve here.
+  if ((json[0] === 'Power' || json[0] === 'Root') && (symbolsIn(json[2]).has('x') || symbolsIn(json[2]).has('y'))) return false;
   return json.slice(1).every(isAlgebraic);
+}
+
+/** The one y = … form of an equation in x and y (9x + 12y = 30 → 5/2 − 3x/4), or null if there isn't exactly one. */
+function solveForY(json: Json): Json | null {
+  if (!isAlgebraic(json)) return null;
+  try {
+    const raw: unknown = ce.box(json).solve('y');
+    if (!Array.isArray(raw) || raw.length !== 1) return null;
+    const solution: Json = (raw[0] as { json: Json }).json;
+    return symbolsIn(solution).has('y') || hasErrors(solution) ? null : solution;
+  } catch {
+    return null;
+  }
 }
 
 function verticals(json: Json): Plottable {

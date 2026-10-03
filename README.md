@@ -159,6 +159,8 @@ Choose **Graph this step** in a step's ⋯ menu, or open **📈 Graphs → + Add
   curves (`x^2 + y^2 = 25`). Any other variable gets a slider, including subscripted and Greek ones
   (`a` and `b` in `y = ax + b`, `a_1`, `v_{max}`, `\alpha`).
 - **Equations in x alone** like `2x + 3 = 5x − 8` are drawn as a vertical line at each solution (here x = 11/3).
+- **Standard form** like `9x + 12y = 30` (and anything else with one y for each x) is drawn as the line
+  `y = …` it equals, so crossings with other lines are marked.
 - **Points**: `(10, 0)`, or several at once: `(1, 2), (3, 4)`.
 - **Inequalities**: `y < 2x + 1`, `y ≥ x^2` shade below or above the boundary (dashed for < and >, solid for ≤
   and ≥); inequalities in x alone, like `x > 3` or `x^2 < 9`, shade the vertical bands where they're true.
