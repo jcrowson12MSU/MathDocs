@@ -64,7 +64,8 @@ Each step is a live math editor ([MathLive](https://mathlive.io)). Type the way 
 | **⌘ /** or **Option /** (Ctrl+/ or Alt+/ on Windows) | comment on this step. Press it again or Esc to go back to the step. **In Safari use Option /**, because Safari keeps ⌘ / for View → Show Status Bar |
 | **Esc** | finish editing a text cell |
 
-Text cells use Markdown with `$inline math$` and `$$display math$$`.
+Text cells use Markdown with `$inline math$` and `$$display math$$`. For a plain dollar sign (money in a word
+problem), type `\$`: "costs \$20" shows "costs $20".
 Step numbers restart after each text cell or divider, so each problem starts again at step 1.
 Click **⌨︎ Keyboard** for an on-screen math keyboard.
 

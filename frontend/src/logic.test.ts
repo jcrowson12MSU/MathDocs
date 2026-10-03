@@ -3,6 +3,7 @@ import { analyze, applyOperation, derivative, integrate, intersections, mixedNum
 import { mathCell, mergeComments, type MathCell, newNotebook, normalize, parseNumber } from './model';
 import { decodeNotebook, encodeNotebook, shareLink } from './share';
 import { solutionSet, yRegion } from './inequality';
+import { splitMath } from './markdown';
 import { columnAt, groupTerms, hasRelation, nearestColumn, type Atom } from './views/workrow';
 
 /** Fake measured atoms: each token 10px wide; null = nested inside the previous atom. */
@@ -265,6 +266,27 @@ describe('inequalities', () => {
     expect(yRegion('y\\ge x^2')).toMatchObject({ shade: 'above', inclusive: true });
     expect(yRegion('2x+1>y')).toMatchObject({ shade: 'below', inclusive: false });
     expect(yRegion('x^2+y^2<25')).toBeNull();
+  });
+});
+
+describe('text cells: math and dollar signs', () => {
+  const formulas = (t: string) => splitMath(t).segments.map((s) => s.tex);
+
+  it('finds $inline$ and $$display$$ math', () => {
+    expect(formulas('Solve $2x+3=7$ for $x$.')).toEqual(['2x+3=7', 'x']);
+    expect(splitMath('$$x^2$$').segments).toEqual([{ tex: 'x^2', display: true }]);
+  });
+
+  it('treats \\$ as a plain dollar sign, not the start of math', () => {
+    const r = splitMath('Plan A costs \\$20 plus \\$5 a month.');
+    expect(r.segments).toEqual([]);
+    expect(r.text).not.toContain('\\$');
+    // Money and math in the same sentence.
+    expect(formulas('It costs \\$5 per hour, so $c = 5h$.')).toEqual(['c = 5h']);
+  });
+
+  it('keeps \\$ inside a formula as a LaTeX dollar sign', () => {
+    expect(formulas('$\\$20 + \\$5$')).toEqual(['\\$20 + \\$5']);
   });
 });
 

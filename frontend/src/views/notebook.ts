@@ -739,7 +739,7 @@ export class NotebookView {
 
   private textEditor(cell: TextCell, el: HTMLElement): CellEditor {
     const view = h('div', { class: 'md-view', tabindex: '0' });
-    const area = h('textarea', { class: 'md-edit', rows: 1, placeholder: 'Notes… (Markdown, with $math$ like $x^2$)' });
+    const area = h('textarea', { class: 'md-edit', rows: 1, placeholder: 'Notes… (Markdown, with $math$ like $x^2$; type \\$ for a dollar sign)' });
     area.value = cell.text;
     let editing = false;
 
