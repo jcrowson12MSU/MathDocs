@@ -626,3 +626,10 @@ a.notebook-link.missing::after { content: " (not written yet)"; font-size: 0.8em
 .cell.flash { animation: flash 1.6s ease-out; }
 @keyframes flash { from { background: var(--accent-soft); } to { background: transparent; } }
 @media print { a.notebook-link.missing::after { content: ""; } }
+
+/* Tables in text cells: ruled cells and a shaded header row, so rows and columns are easy to follow. */
+.md-view table { border-collapse: collapse; margin: 8px 0; font-variant-numeric: tabular-nums; }
+.md-view th, .md-view td { border: 1px solid color-mix(in srgb, var(--ink) 22%, transparent); padding: 5px 12px; vertical-align: middle; }
+.md-view th { background: var(--accent-soft); font-weight: 600; }
+.md-view tbody tr:nth-child(even) td { background: color-mix(in srgb, var(--ink) 3%, transparent); }
+@media print { .md-view th, .md-view td { border-color: #999; } .md-view th { background: #eee; } }
