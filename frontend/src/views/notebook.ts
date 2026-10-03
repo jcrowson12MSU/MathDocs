@@ -23,6 +23,7 @@ import { variablesEditor } from './variables';
 import { layoutEditor } from './layouts';
 import { matrixEditor, nextMatrix, setMatrixSuggestions } from './matrix';
 import { proofEditor } from './proof';
+import { findContents, TocPanel } from './toc';
 import { limitEditor } from './limit';
 import { installCalculusKeyboard } from '../keyboard';
 import { cleanLatex, substitute, valueStep } from '../substitute';
@@ -126,7 +127,8 @@ export class NotebookView {
   // -- layout ----------------------------------------------------------------
 
   private render(): void {
-    this.mainEl.replaceChildren(h('div', { class: 'work' }, this.banner(), this.cellsEl), this.splitter(), this.graphs.el);
+    this.mainEl.replaceChildren(this.tocSlot, h('div', { class: 'work' }, this.banner(), this.cellsEl), this.splitter(), this.graphs.el);
+    void this.setUpContents();
     const saved = loadSettings().graphsWidth;
     if (saved) this.mainEl.style.setProperty('--graphs-w', `${saved}px`);
     this.applyLayout();
@@ -188,6 +190,7 @@ export class NotebookView {
     // Back to the folder this notebook is in.
     const folder = m.kind === 'file' ? folderOf(m.name) : '';
     return h('header', { class: 'topbar' },
+      this.tocButton,
       h('a', { class: 'home-link', href: folderHash(folder), title: folder ? `Back to ${folder.split('/').join(' › ')}` : 'All notebooks' },
         folder ? `← ${folder.split('/').pop()}` : '← Notebooks'),
       title,
@@ -364,6 +367,28 @@ export class NotebookView {
   }
 
   /** Hide the cells under each collapsed divider, down to the next divider. */
+  /** ☰: shows or hides the book's table of contents (only in a folder that has one). */
+  private tocButton = h('button', { class: 'icon toc-btn', title: 'Show or hide the table of contents', hidden: true, 'aria-label': 'Table of contents' }, '☰');
+  private tocSlot = h('div', { class: 'toc-slot' });
+
+  /** In a book, put its table of contents in a panel on the left, behind the ☰ button. */
+  private async setUpContents(): Promise<void> {
+    if (this.mode.kind !== 'file' || !this.serverOk) return;
+    const name = this.mode.name;
+    const found = await findContents(folderOf(name));
+    if (!found || found.name === name) return;
+    const panel = new TocPanel(found.name, found.names, name, (a, e) => this.followLink(a, e));
+    try {
+      await panel.load();
+    } catch {
+      return;
+    }
+    this.tocSlot.replaceChildren(panel.el);
+    this.tocButton.hidden = false;
+    this.tocButton.classList.toggle('active', !panel.el.hidden);
+    this.tocButton.onclick = () => this.tocButton.classList.toggle('active', panel.toggle());
+  }
+
   /** The folder this notebook is in (links in its text are relative to it). */
   private folder(): string {
     return this.mode.kind === 'file' ? folderOf(this.mode.name) : '';

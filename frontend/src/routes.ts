@@ -17,5 +17,8 @@ export function parseNotebookHash(hash: string): { name: string; section: string
 /** A folder on the home page ("" = the top level). */
 export const folderHash = (path: string) => (path ? `#/folder/${encodeURIComponent(path)}` : '#/');
 
+/** A notebook named "Contents" or "Table of Contents" is a folder's table of contents. */
+export const isContents = (title: string) => /^(table of )?contents$/i.test(title.trim());
+
 /** The folder a notebook is in ("" = the top level). */
 export const folderOf = (name: string) => (name.includes('/') ? name.slice(0, name.lastIndexOf('/')) : '');

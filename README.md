@@ -218,6 +218,11 @@ A notebook opened from a link opens at the top (or at its section) instead of at
 first (📖), the other notebooks follow in order by name with numbers sorted properly (Chapter 2 before Chapter 10), and
 they open at the top. Other folders still list the most recently changed notebooks first.
 
+In a book, each notebook has a **☰** button at the top left that shows or hides the table of contents in a panel on
+the left: the chapters and lessons as links, the current chapter highlighted, chapters not written yet in gray.
+Clicking a lesson in the chapter you're reading scrolls to it. The panel stays open or closed as you move between
+chapters, and it's left out when printing.
+
 ## Comments
 
 Choose **Comment** in a cell's ⋯ menu, or press **⌘ /** (**Option /** in Safari), to leave a comment. You enter

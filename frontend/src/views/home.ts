@@ -2,7 +2,9 @@
 
 import { api, serverInfo, type FolderSummary, type NotebookSummary } from '../api';
 import { newNotebook, normalize } from '../model';
-import { folderHash, notebookHash } from '../routes';
+import { folderHash, isContents, notebookHash } from '../routes';
+
+export { isContents };
 import { loadSettings, saveSettings } from '../settings';
 import { encodeNotebook } from '../share';
 import { saveIncoming } from '../incoming';
@@ -62,8 +64,6 @@ function pickFolder(title: string, folders: FolderSummary[], current: string, ex
   });
 }
 
-/** A notebook named "Contents" or "Table of Contents" is a folder's table of contents. */
-export const isContents = (title: string) => /^(table of )?contents$/i.test(title.trim());
 
 /**
  * Notebooks in a folder, newest first — unless the folder has a table of contents. Then it's a book:

@@ -9,6 +9,8 @@ export interface Settings {
   shareBase: string;
   /** Width of the graph panel in pixels, set by dragging the divider. Unset means the default. */
   graphsWidth?: number;
+  /** Show the ☰ table of contents beside notebooks in a book (shown unless turned off). */
+  tocOpen?: boolean;
 }
 
 export function loadSettings(): Settings {
