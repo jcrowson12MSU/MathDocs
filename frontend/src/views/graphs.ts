@@ -567,37 +567,31 @@ class GraphCard {
    * events and a mouse sends a few big ones; zooming a fixed step per event made trackpads far too fast.
    */
   private onWheel = (e: WheelEvent) => {
-    if (!this.board) return;
+    const board = this.board;
+    if (!board) return;
     e.preventDefault();
     let px = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaMode === 2 ? e.deltaY * 400 : e.deltaY;
     if (e.ctrlKey) px *= 5; // a trackpad pinch arrives as small wheel events with Ctrl held
-    // Redrawing the graph takes a few milliseconds and a trackpad sends several events per screen
-    // frame, so add them up and redraw once per frame; otherwise frames get dropped and zooming jerks.
-    this.wheelPx += Math.max(-150, Math.min(150, px));
-    this.wheelEvent = e;
-    if (!this.wheelFrame) this.wheelFrame = requestAnimationFrame(this.applyWheel);
-  };
-  private wheelPx = 0;
-  private wheelEvent: WheelEvent | null = null;
-  private wheelFrame = 0;
-
-  private applyWheel = () => {
-    this.wheelFrame = 0;
-    const board = this.board;
-    const e = this.wheelEvent;
-    const px = this.wheelPx;
-    this.wheelPx = 0;
-    if (!board || !e || !px) return;
-    const k = Math.exp(Math.max(-300, Math.min(300, px)) * ZOOM_PER_PIXEL); // > 1 zooms out
-    const [x, y] = board.getUsrCoordsOfMouse(e);
-    const [x1, y1, x2, y2] = board.getBoundingBox();
-    board.setBoundingBox([x + (x1 - x) * k, y + (y1 - y) * k, x + (x2 - x) * k, y + (y2 - y) * k], false);
+    px = Math.max(-150, Math.min(150, px));
+    if (!px) return;
+    // Use JSXGraph's own zoomIn/zoomOut, the path its built-in wheel zoom takes (smooth: it keeps the
+    // zoom level in sync and redraws everything at once). Only the factor differs: sized to this event
+    // instead of a fixed 20%, then put back so the +/− buttons still zoom by their usual step.
+    const zoom = board.attr.zoom;
+    const saved = [zoom.factorx, zoom.factory];
+    zoom.factorx = zoom.factory = Math.exp(Math.abs(px) * ZOOM_PER_PIXEL);
+    try {
+      const [x, y] = board.getUsrCoordsOfMouse(e);
+      if (px < 0) board.zoomIn(x, y);
+      else board.zoomOut(x, y);
+    } finally {
+      [zoom.factorx, zoom.factory] = saved;
+    }
   };
 
   destroy(): void {
     this.resizeObserver.disconnect();
     this.boardDiv.removeEventListener('wheel', this.onWheel);
-    cancelAnimationFrame(this.wheelFrame);
     this.saveBbox.flush();
     if (this.board) JXG.JSXGraph.freeBoard(this.board);
     this.board = null;
