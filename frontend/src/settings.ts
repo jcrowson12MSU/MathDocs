@@ -11,6 +11,8 @@ export interface Settings {
   graphsWidth?: number;
   /** Show the ☰ table of contents beside notebooks in a book (shown unless turned off). */
   tocOpen?: boolean;
+  /** Units collapsed in the ☰ panel, by table-of-contents notebook. */
+  tocCollapsed?: Record<string, string[]>;
 }
 
 export function loadSettings(): Settings {

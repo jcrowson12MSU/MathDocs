@@ -49,19 +49,18 @@ export class TocPanel {
     return open;
   }
 
-  /** Load the contents notebook and show its text (sections collapsed in it stay out of the panel). */
+  /**
+   * Load the contents notebook and show it unit by unit (a unit is a divider and the text under it). Every unit with
+   * links shows, whether or not it's collapsed on the contents page; sections with no links (help text) are left out.
+   * Each unit can be collapsed here too — remembered separately from the contents page.
+   */
   async load(): Promise<void> {
     const toc = normalize(await api.get(this.tocName));
     const folder = folderOf(this.tocName);
-    const parts: HTMLElement[] = [
-      h('a', { class: 'toc-title', href: `#/nb/${encodeURIComponent(this.tocName)}?s=` }, toc.title),
-    ];
-    let hidden = false;
+    const units: { title: string; blocks: HTMLElement[] }[] = [{ title: '', blocks: [] }];
     for (const c of toc.cells) {
-      if (c.type === 'divider') {
-        hidden = !!c.collapsed;
-        if (!hidden) parts.push(h('div', { class: 'toc-unit' }, c.title));
-      } else if (c.type === 'markdown' && !hidden && c.text.trim()) {
+      if (c.type === 'divider') units.push({ title: c.title.trim(), blocks: [] });
+      else if (c.type === 'markdown' && c.text.trim()) {
         const block = h('div', { class: 'toc-block md-view' });
         block.innerHTML = renderMarkdown(c.text, { folder });
         // A narrow panel: keep the headings, lists, and link lines; leave out the big title and paragraphs of prose.
@@ -69,8 +68,42 @@ export class TocPanel {
         block.querySelectorAll('p').forEach((p) => {
           if (!p.querySelector('a.notebook-link')) p.remove();
         });
-        if (block.textContent?.trim()) parts.push(block);
+        if (block.textContent?.trim()) units[units.length - 1].blocks.push(block);
       }
+    }
+    const collapsed = new Set(loadSettings().tocCollapsed?.[this.tocName] ?? []);
+    const saveCollapsed = () => {
+      const s = loadSettings();
+      saveSettings({ ...s, tocCollapsed: { ...s.tocCollapsed, [this.tocName]: [...collapsed] } });
+    };
+    const parts: HTMLElement[] = [
+      h('a', { class: 'toc-title', href: `#/nb/${encodeURIComponent(this.tocName)}?s=` }, toc.title),
+    ];
+    for (const unit of units) {
+      if (!unit.blocks.some((b) => b.querySelector('a.notebook-link'))) continue;
+      const body = h('div', { class: 'toc-unit-body' }, ...unit.blocks);
+      if (!unit.title) {
+        parts.push(body);
+        continue;
+      }
+      // The unit holding the notebook you're reading always opens.
+      const holdsCurrent = unit.blocks.some((b) => b.querySelector(`a.notebook-link[data-nb="${CSS.escape(this.current)}"]`));
+      let open = holdsCurrent || !collapsed.has(unit.title);
+      const head = h('button', { class: 'toc-unit', type: 'button', 'aria-expanded': String(open) });
+      const show = () => {
+        head.textContent = `${open ? '▾' : '▸'} ${unit.title}`;
+        head.setAttribute('aria-expanded', String(open));
+        body.hidden = !open;
+      };
+      head.addEventListener('click', () => {
+        open = !open;
+        if (open) collapsed.delete(unit.title);
+        else collapsed.add(unit.title);
+        saveCollapsed();
+        show();
+      });
+      show();
+      parts.push(head, body);
     }
     this.el.replaceChildren(...parts);
     for (const a of this.el.querySelectorAll<HTMLAnchorElement>('a.notebook-link')) {

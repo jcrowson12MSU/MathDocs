@@ -645,7 +645,9 @@ a.notebook-link.missing::after { content: " (not written yet)"; font-size: 0.8em
 .toc-panel[hidden] { display: none; }
 .toc-title { display: block; font: 600 16px var(--font); color: var(--ink); text-decoration: none; margin-bottom: 6px; }
 .toc-title:hover { color: var(--accent); }
-.toc-unit { font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); margin: 14px 0 4px; }
+.toc-unit { display: block; width: 100%; text-align: left; font: 700 11px var(--font); letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); margin: 14px 0 4px; padding: 2px 0; background: none; border: none; cursor: pointer; }
+.toc-unit:hover { color: var(--ink); }
+.toc-unit-body[hidden] { display: none; }
 .toc-block h3 { font-size: 14px; margin: 8px 0 2px; }
 .toc-block ol, .toc-block ul { margin: 2px 0 6px; padding-left: 20px; }
 .toc-block li { margin: 1px 0; }

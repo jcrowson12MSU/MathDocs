@@ -40,7 +40,8 @@ export interface NotebookLink {
   label: string;
 }
 
-const WIKI_RE = /\[\[([^\[\]\n]+?)\]\]/g;
+/** Code spans and blocks (group 1), or a [[link]] (group 2) — so links inside code are skipped. */
+const CODE_OR_WIKI_RE = /(`+)[\s\S]*?\1|\[\[([^\[\]\n]+?)\]\]/g;
 
 /** Read the inside of [[…]], resolving the name against `folder` (the linking notebook's folder). */
 export function parseNotebookLink(inner: string, folder: string): NotebookLink | null {
@@ -59,7 +60,9 @@ const escapeHtml = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt
 export function renderMarkdown(text: string, opts: { folder?: string } = {}): string {
   // Notebook links become placeholders first, so a | inside [[…]] can't break a table.
   const links: NotebookLink[] = [];
-  const withLinks = text.replace(WIKI_RE, (whole, inner: string) => {
+  // Code (`…` or ``` blocks) is left as typed, so `[[Name]]` can show how to write a link.
+  const withLinks = text.replace(CODE_OR_WIKI_RE, (whole, code: string | undefined, inner: string | undefined) => {
+    if (code !== undefined || inner === undefined) return whole;
     const link = parseNotebookLink(inner, opts.folder ?? '');
     if (!link) return whole;
     links.push(link);
