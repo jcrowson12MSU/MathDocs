@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { analyze, applyOperation, derivative, integrate, mixedNumbers, splitRelation, variableLatex } from './mathfn';
+import { analyze, applyOperation, derivative, integrate, intersections, mixedNumbers, splitRelation, variableLatex } from './mathfn';
 import { mathCell, mergeComments, type MathCell, newNotebook, normalize, parseNumber } from './model';
 import { decodeNotebook, encodeNotebook, shareLink } from './share';
 import { columnAt, groupTerms, hasRelation, nearestColumn, type Atom } from './views/workrow';
@@ -184,6 +184,36 @@ describe('doing the same thing to both sides', () => {
     expect(applyOperation('a=b=c', '-1')).toBeNull(); // two relations
     expect(applyOperation('2x=8', '3')).toBeNull(); // no operation sign
     expect(applyOperation('ax<8', '\\div a')).toBeNull(); // unknown sign for an inequality
+  });
+});
+
+describe('intersections', () => {
+  const line = (latex: string) => {
+    const r = analyze(latex);
+    if (r.kind !== 'function') throw new Error(latex);
+    return (x: number) => r.f(x, {});
+  };
+
+  it('finds where the two candle lines cross', () => {
+    // From "Systems of Equations": y = 5/6 x + 55 and y = 2½x + 25 meet at (18, 70).
+    const a = line('y=\\frac56x+55');
+    const b = line(mixedNumbers('y=2\\frac12x+25'));
+    const xs = intersections(a, b, -100, 100);
+    expect(xs.length).toBe(1);
+    expect(xs[0]).toBeCloseTo(18, 9);
+    expect(a(xs[0])).toBeCloseTo(70, 9);
+  });
+
+  it('finds every crossing in the range, left to right', () => {
+    const xs = intersections((x) => x * x, (x) => x + 2, -10, 10); // x² = x + 2 → x = −1, 2
+    expect(xs.map((x) => +x.toFixed(9))).toEqual([-1, 2]);
+    expect(intersections((x) => x * x, (x) => x + 2, 5, 10)).toEqual([]); // none in this range
+  });
+
+  it('ignores parallel lines and asymptotes', () => {
+    expect(intersections((x) => 2 * x + 1, (x) => 2 * x + 5, -50, 50)).toEqual([]);
+    // 1/x jumps from −∞ to +∞ at 0 but never crosses y = 0.
+    expect(intersections((x) => 1 / x, () => 0, -5, 5)).toEqual([]);
   });
 });
 

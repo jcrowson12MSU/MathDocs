@@ -101,6 +101,8 @@ export interface Graph {
   /** What each axis represents, e.g. "time (hours)". */
   xLabel?: string;
   yLabel?: string;
+  /** Mark where lines cross (on unless set to false). */
+  intersections?: boolean;
   /** [xmin, ymax, xmax, ymin], JSXGraph's order. */
   bbox: [number, number, number, number];
 }
@@ -230,6 +232,7 @@ export function normalize(raw: unknown): Notebook {
         title: String(g.title ?? ''),
         ...(typeof g.xLabel === 'string' && g.xLabel ? { xLabel: g.xLabel } : {}),
         ...(typeof g.yLabel === 'string' && g.yLabel ? { yLabel: g.yLabel } : {}),
+        ...(g.intersections === false ? { intersections: false } : {}),
         bbox: Array.isArray(g.bbox) && g.bbox.length === 4 && g.bbox.every(Number.isFinite) ? g.bbox : [...DEFAULT_BBOX],
         items: Array.isArray(g.items) ? g.items.filter((i: any) => i && ['expr', 'table', 'note'].includes(i.kind)) : [],
       }))

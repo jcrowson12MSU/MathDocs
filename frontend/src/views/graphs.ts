@@ -3,7 +3,7 @@
 import JXG from 'jsxgraph';
 import katex from 'katex';
 import { MathfieldElement } from 'mathlive';
-import { analyze, derivative, integrate, variableLatex, type Plottable } from '../mathfn';
+import { analyze, derivative, integrate, intersections, variableLatex, type Plottable } from '../mathfn';
 import {
   COLORS, DEFAULT_BBOX, exprItem, newGraph, nextColor, noteItem, parseNumber, tableItem,
   type ExprItem, type Graph, type GraphItem, type NoteItem, type Notebook, type TableItem,
@@ -84,6 +84,9 @@ class GraphCard {
   private resizeObserver: ResizeObserver;
   private lastSize = '';
   private rebuildSoon = debounce(() => this.buildBoard(), 120);
+  /** Intersection markers currently on the board (recomputed when the view or a slider changes). */
+  private crossings: any[] = [];
+  private crossingsSoon = debounce(() => this.drawIntersections(), 80);
   private saveBbox = debounce(() => {
     if (!this.board) return;
     this.graph.bbox = this.board.getBoundingBox().map(round) as Graph['bbox'];
@@ -125,7 +128,8 @@ class GraphCard {
         ro ? null : h('button', { class: 'icon', title: 'Delete graph', onclick: onDelete }, '✕'),
       ),
       h('div', { class: 'board-wrap' }, this.yAxisLabel, h('div', { class: 'board-col' }, this.boardDiv, this.xAxisLabel)),
-      ro ? null : h('div', { class: 'axis-fields' }, axisInput('x'), axisInput('y')),
+      ro ? null : h('div', { class: 'axis-fields' }, axisInput('x'), axisInput('y'),
+        this.toggle('Mark intersections', graph.intersections !== false, (on) => (graph.intersections = on ? undefined : false))),
       this.itemsEl,
       ro ? null : h('div', { class: 'graph-add' },
         h('button', { class: 'btn small', onclick: () => this.addItem(exprItem('', nextColor(graph))) }, '+ Expression'),
@@ -348,6 +352,7 @@ class GraphCard {
       if (!Number.isFinite(v)) return;
       item.params![name] = v;
       this.board?.update();
+      this.crossingsSoon();
       this.opts.onChange();
     };
     range.addEventListener('input', () => {
@@ -466,10 +471,59 @@ class GraphCard {
       else this.drawNote(board, item, syncers);
     }
 
-    board.on('boundingbox', () => this.saveBbox());
+    this.crossings = [];
+    this.drawIntersections();
+    board.on('boundingbox', () => {
+      this.saveBbox();
+      this.crossingsSoon();
+    });
     board.on('up', () => {
       if (syncers.map((s) => s()).some(Boolean)) this.opts.onChange();
     });
+  }
+
+  /**
+   * Mark where the graph's lines and curves (y = …, and vertical lines like x = 3) cross, within the
+   * current view, labeled with their coordinates. Redrawn when the view or a slider changes.
+   */
+  private drawIntersections(): void {
+    const board = this.board;
+    if (!board) return;
+    for (const el of this.crossings) board.removeObject(el);
+    this.crossings = [];
+    if (this.graph.intersections === false) return;
+
+    const curves: ((x: number) => number)[] = [];
+    const verticals: number[] = [];
+    for (const item of this.graph.items) {
+      if (item.kind !== 'expr' || item.hidden) continue;
+      const a = this.analysis(item);
+      if (a.kind === 'function') curves.push((x) => a.f(x, item.params ?? {}));
+      else if (a.kind === 'verticals') verticals.push(...a.xs);
+    }
+    if (curves.length + verticals.length < 2 && !(curves.length && verticals.length)) return;
+
+    const [x1, y1, x2, y2] = board.getBoundingBox();
+    const inView = ([x, y]: [number, number]) => x >= x1 && x <= x2 && y <= y1 && y >= y2;
+    const found: [number, number][] = [];
+    for (let i = 0; i < curves.length; i++) {
+      for (let j = i + 1; j < curves.length; j++) {
+        for (const x of intersections(curves[i], curves[j], x1, x2)) found.push([x, curves[i](x)]);
+      }
+    }
+    for (const x of verticals) for (const f of curves) found.push([x, f(x)]);
+
+    // One marker per spot (three lines through one point give one marker), at most 40.
+    const near = (p: [number, number], q: [number, number]) =>
+      Math.abs(p[0] - q[0]) < (x2 - x1) / 500 && Math.abs(p[1] - q[1]) < (y1 - y2) / 500;
+    const points = found.filter((p, i) => Number.isFinite(p[1]) && inView(p) && !found.slice(0, i).some((q) => near(p, q))).slice(0, 40);
+    for (const [x, y] of points) {
+      this.crossings.push(board.create('point', [x, y], {
+        name: `(${fmt(x)}, ${fmt(y)})`, withLabel: true, fixed: true, highlight: false,
+        size: 4, fillColor: '#ffffff', strokeColor: '#1d2433', strokeWidth: 2,
+        label: { fontSize: 12, strokeColor: '#1d2433', offset: [8, -12], cssStyle: 'font-weight:600;background:rgba(255,255,255,0.8);padding:0 3px;border-radius:3px;' },
+      }));
+    }
   }
 
   /** A draggable text on the board; its position is saved with `save`. */

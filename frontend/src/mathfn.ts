@@ -52,7 +52,8 @@ function hasErrors(json: Json): boolean {
 
 export function analyze(latex: string): Plottable {
   if (!latex.trim()) return { kind: 'empty' };
-  const expr = ce.parse(latex);
+  // 2\frac12x means 2½·x, as students write it (Compute Engine alone would read 2·½·x).
+  const expr = ce.parse(mixedNumbers(latex));
   const json: Json = expr.json;
   if (hasErrors(json)) return { kind: 'error', message: 'Finish typing the expression' };
   if (Array.isArray(json) && INEQUALITIES.has(json[0])) {
@@ -235,6 +236,53 @@ export function applyOperation(step: string, operation: string): string | null {
   const l = apply(left);
   const r = apply(right);
   return l && r ? `${l}${rel}${r}` : null;
+}
+
+/**
+ * Where y = f(x) and y = g(x) cross between a and b: the x values, left to right.
+ * Samples f − g, refines each sign change by bisection, and skips the false "crossings" at a
+ * vertical asymptote (like 1/x at 0), where f − g jumps sign without being near zero.
+ */
+export function intersections(f: (x: number) => number, g: (x: number) => number, a: number, b: number, samples = 600): number[] {
+  const h = (x: number) => f(x) - g(x);
+  const roots: number[] = [];
+  const step = (b - a) / samples;
+  const add = (x: number) => {
+    const scale = 1 + Math.abs(f(x)) + Math.abs(g(x));
+    if (!Number.isFinite(h(x)) || Math.abs(h(x)) > 1e-7 * scale) return; // an asymptote, not a crossing
+    if (roots.length && Math.abs(roots[roots.length - 1] - x) < step / 2) return; // same crossing twice
+    roots.push(x);
+  };
+  let x0 = a;
+  let h0 = h(x0);
+  for (let i = 1; i <= samples; i++) {
+    const x1 = a + i * step;
+    const h1 = h(x1);
+    if (h0 === 0) add(x0);
+    else if (Number.isFinite(h0) && Number.isFinite(h1) && h0 * h1 < 0) {
+      let lo = x0;
+      let hi = x1;
+      let hlo = h0;
+      for (let k = 0; k < 60; k++) {
+        const mid = (lo + hi) / 2;
+        const hm = h(mid);
+        if (hm === 0 || !Number.isFinite(hm)) {
+          lo = hi = mid;
+          break;
+        }
+        if (hlo * hm < 0) hi = mid;
+        else {
+          lo = mid;
+          hlo = hm;
+        }
+      }
+      add((lo + hi) / 2);
+    }
+    x0 = x1;
+    h0 = h1;
+  }
+  if (h0 === 0) add(x0);
+  return roots;
 }
 
 /** Numerical derivative (central difference). */

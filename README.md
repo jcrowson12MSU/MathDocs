@@ -125,6 +125,9 @@ Choose **Graph this step** in a step's ⋯ menu, or open **📈 Graphs → + Add
   (`a` and `b` in `y = ax + b`, `a_1`, `v_{max}`, `\alpha`).
 - **Equations in x alone** like `2x + 3 = 5x − 8` are drawn as a vertical line at each solution (here x = 11/3).
 - **Points**: `(10, 0)`, or several at once: `(1, 2), (3, 4)`.
+- **Intersections**: where two lines or curves (`y = …`, or vertical lines like `x = 3`) cross, the point is
+  marked with its coordinates, e.g. **(18, 70)**. Markers follow the view as you pan and zoom. Turn them off
+  with **Mark intersections** under the graph. (Circles and tables of points aren't included yet.)
 - **Calculus tools** for `y = f(x)`: derivative curve, a draggable tangent line that shows its slope, and
   shaded area under the curve between two draggable bounds.
 - **Tables of points**: type x and y values, or pick "y from …" to compute y from an expression.
