@@ -79,7 +79,49 @@ export interface VariablesCell {
   comments: Comment[];
 }
 
-export type Cell = MathCell | TextCell | DividerCell | SystemCell | VariablesCell;
+/**
+ * A layout filled in by the student, the way it's drawn on paper. Nothing in it is computed.
+ * - box: area model; cells[0][1..] are the top terms, cells[1..][0] the side terms, the rest the products.
+ * - diamond: the X for factoring; cells[0] = [top (multiplies to), left, right, bottom (adds to)].
+ * - synthetic: synthetic division; cells[0] = [divisor, coefficients…], cells[1] = [ , middle row…],
+ *   cells[2] = [ , bottom row…].
+ * - longdiv: long division; cells[0] = [quotient], cells[1] = [divisor, dividend], then one work line per row
+ *   (lines alternate: what's subtracted, with a rule under it, then what's left).
+ */
+export type LayoutKind = 'box' | 'diamond' | 'synthetic' | 'longdiv';
+
+export interface LayoutCell {
+  id: string;
+  type: 'layout';
+  layout: LayoutKind;
+  cells: string[][];
+  /** Long division: how far each work line is indented (in em). */
+  indents?: number[];
+  comments: Comment[];
+}
+
+/** A matrix (optionally augmented) with a note per row for its row operation: R_2 − 3R_1, R_1 ↔ R_2, ½R_1. */
+export interface MatrixCell {
+  id: string;
+  type: 'matrix';
+  rows: string[][];
+  notes: string[];
+  /** Draw a bar before the last column (an augmented matrix). */
+  augmented: boolean;
+  comments: Comment[];
+}
+
+/** A two-column proof: Given, Prove, then numbered Statement | Reason rows. */
+export interface ProofCell {
+  id: string;
+  type: 'proof';
+  given: string;
+  prove: string;
+  rows: { statement: string; reason: string }[];
+  comments: Comment[];
+}
+
+export type Cell = MathCell | TextCell | DividerCell | SystemCell | VariablesCell | LayoutCell | MatrixCell | ProofCell;
 
 export interface ExprItem {
   id: string;
@@ -190,6 +232,25 @@ export function meaningOf(nb: Notebook, letter: string): string {
   return '';
 }
 
+const blank = (rows: number, cols: number) => Array.from({ length: rows }, () => Array<string>(cols).fill(''));
+
+export function layoutCell(layout: LayoutKind): LayoutCell {
+  const cells =
+    layout === 'box' ? blank(3, 3)
+    : layout === 'diamond' ? blank(1, 4)
+    : layout === 'synthetic' ? blank(3, 5)
+    : [[''], ['', ''], [''], [''], [''], ['']];
+  return { id: newId(), type: 'layout', layout, cells, ...(layout === 'longdiv' ? { indents: [0, 0, 0, 0] } : {}), comments: [] };
+}
+
+export function matrixCell(rows = 2, cols = 3, augmented = true): MatrixCell {
+  return { id: newId(), type: 'matrix', rows: blank(rows, cols), notes: Array(rows).fill(''), augmented, comments: [] };
+}
+
+export function proofCell(): ProofCell {
+  return { id: newId(), type: 'proof', given: '', prove: '', rows: [0, 1, 2].map(() => ({ statement: '', reason: '' })), comments: [] };
+}
+
 export function systemCell(rows: string[] = ['', '']): SystemCell {
   return { id: newId(), type: 'system', rows: rows.map((latex) => ({ latex })), combine: '+', result: '', comments: [] };
 }
@@ -276,6 +337,30 @@ export function normalize(raw: unknown): Notebook {
       if (c.type === 'markdown') return { id, type: 'markdown', text: String(c.text ?? ''), comments };
       if (c.type === 'divider') {
         return { id, type: 'divider', title: String(c.title ?? ''), collapsed: !!c.collapsed, comments };
+      }
+      const strings = (a: any) => (Array.isArray(a) ? a.map((x: any) => String(x ?? '')) : []);
+      const grid = (a: any) => (Array.isArray(a) ? a.map(strings) : []);
+      if (c.type === 'layout' && ['box', 'diamond', 'synthetic', 'longdiv'].includes(c.layout)) {
+        const fresh = layoutCell(c.layout);
+        const cells = grid(c.cells);
+        return {
+          ...fresh, id, comments,
+          cells: cells.length ? cells : fresh.cells,
+          ...(c.layout === 'longdiv' ? { indents: Array.isArray(c.indents) ? c.indents.map((n: any) => Number(n) || 0) : fresh.indents } : {}),
+        };
+      }
+      if (c.type === 'matrix') {
+        const rows = grid(c.rows).filter((r: string[]) => r.length);
+        const fresh = matrixCell();
+        const use = rows.length ? rows : fresh.rows;
+        const notes = strings(c.notes);
+        return { id, type: 'matrix', rows: use, notes: use.map((_: unknown, i: number) => notes[i] ?? ''), augmented: c.augmented !== false, comments };
+      }
+      if (c.type === 'proof') {
+        const rows = (Array.isArray(c.rows) ? c.rows : [])
+          .filter((r: any) => r && typeof r === 'object')
+          .map((r: any) => ({ statement: String(r.statement ?? ''), reason: String(r.reason ?? '') }));
+        return { id, type: 'proof', given: String(c.given ?? ''), prove: String(c.prove ?? ''), rows: rows.length ? rows : proofCell().rows, comments };
       }
       if (c.type === 'variables') {
         const vars = (Array.isArray(c.vars) ? c.vars : [])

@@ -6,7 +6,7 @@ import { mixedNumbers } from './latexutil';
 
 export { mixedNumbers };
 
-const ce = new ComputeEngine();
+export const ce = new ComputeEngine();
 
 export type Params = Record<string, number>;
 
@@ -68,7 +68,7 @@ function isFunctionHead(json: Json): boolean {
   return Array.isArray(json) && json.length === 2 && typeof json[0] === 'string' && json[1] === 'x' && json[0].length === 1;
 }
 
-function hasErrors(json: Json): boolean {
+export function hasErrors(json: Json): boolean {
   return Array.isArray(json) && (json[0] === 'Error' || json.slice(1).some(hasErrors));
 }
 

@@ -7,7 +7,8 @@ import { renderMarkdown } from '../markdown';
 import katex from 'katex';
 import { applyOperation } from '../mathfn';
 import {
-  dividerCell, mathCell, meaningOf, newId, nowIso, systemCell, textCell, variablesCell,
+  dividerCell, layoutCell, mathCell, matrixCell, meaningOf, newId, nowIso, proofCell, systemCell, textCell, variablesCell,
+  type LayoutKind,
   type Cell, type DividerCell, type MathCell, type Notebook, type TextCell,
 } from '../model';
 import { loadSettings, saveSettings, shareBase } from '../settings';
@@ -19,6 +20,9 @@ import { focusable } from './mathfield';
 import { WorkRow, hasRelation, leftSideEnd } from './workrow';
 import { nextSystemRows, setSystemSuggestions, systemEditor } from './system';
 import { variablesEditor } from './variables';
+import { layoutEditor } from './layouts';
+import { matrixEditor, nextMatrix, setMatrixSuggestions } from './matrix';
+import { proofEditor } from './proof';
 import { cleanLatex, substitute, valueStep } from '../substitute';
 import { solutionSet } from '../inequality';
 import { renderNumberLine } from './numberline';
@@ -56,7 +60,19 @@ interface CellEditor {
   toggleNumberLine?(): void;
   /** In a system: make the next system with multiplied / distributed rows suggested. */
   continueSystem?(): boolean;
+  /** In a matrix: make the next matrix with the noted row operations applied. */
+  continueMatrix?(): boolean;
 }
+
+/** The layouts offered by "+ Layout" and the ⋯ menu. */
+const LAYOUTS: { label: string; make: () => Cell }[] = [
+  { label: '▦  Box (area model)', make: () => layoutCell('box' as LayoutKind) },
+  { label: '✕  X (factoring diamond)', make: () => layoutCell('diamond' as LayoutKind) },
+  { label: '⌐  Synthetic division', make: () => layoutCell('synthetic' as LayoutKind) },
+  { label: '⟌  Long division', make: () => layoutCell('longdiv' as LayoutKind) },
+  { label: '[ ]  Matrix (row operations)', make: () => matrixCell() },
+  { label: '∴  Two-column proof', make: () => proofCell() },
+];
 
 export class NotebookView {
   el = h('div', { class: 'notebook-view' });
@@ -375,6 +391,9 @@ export class NotebookView {
       : cell.type === 'markdown' ? cell.text.trim()
       : cell.type === 'system' ? cell.rows.some((r) => r.latex.trim()) || cell.result.trim()
       : cell.type === 'variables' ? cell.vars.some((v) => v.meaning.trim())
+      : cell.type === 'layout' ? cell.cells.some((r) => r.some((v) => v.trim()))
+      : cell.type === 'matrix' ? cell.rows.some((r) => r.some((v) => v.trim())) || cell.notes.some((n) => n.trim())
+      : cell.type === 'proof' ? cell.given.trim() || cell.prove.trim() || cell.rows.some((r) => r.statement.trim() || r.reason.trim())
       : cell.title.trim();
     if (hasContent || cell.comments.length) {
       toast('Cell deleted.', { label: 'Undo', run: () => this.insertCell(Math.min(i, this.nb.cells.length), cell) }, 6000);
@@ -447,6 +466,11 @@ export class NotebookView {
     ], [{ label: 'Cancel' }]);
   }
 
+  /** Pick a layout (box, X, synthetic / long division, matrix, proof) to add at `at`. */
+  private layoutMenu(anchor: HTMLElement, at: number): void {
+    openMenu(anchor, LAYOUTS.map((l) => ({ label: l.label, run: () => this.insertCell(at, l.make()) })));
+  }
+
   /** Enter in a math step: go to the next step, making one if needed. */
   private nextStep(id: string, copy: boolean): void {
     const i = this.index(id);
@@ -473,7 +497,7 @@ export class NotebookView {
     for (const cell of this.nb.cells) {
       const v = this.views.get(cell.id);
       if (!v) continue;
-      if (cell.type === 'markdown' || cell.type === 'divider' || cell.type === 'variables') {
+      if (cell.type === 'markdown' || cell.type === 'divider' || cell.type === 'variables' || cell.type === 'proof') {
         n = 0;
         v.numberEl.textContent = '';
       } else {
@@ -520,6 +544,18 @@ export class NotebookView {
     const el = h('div', { class: `cell ${cell.type}`, 'data-id': cell.id });
     el.addEventListener('focusin', () => (this.lastCellId = cell.id));
 
+    const gridCtx = () => ({
+      readOnly: this.readOnly,
+      onChange: () => this.changed(),
+      cellKeys: (e: KeyboardEvent) => this.cellKeys(e, cell),
+      leave: (dir: -1 | 1) => {
+        const j = this.neighbor(this.index(cell.id), dir);
+        if (j < 0) return false;
+        this.focusAt(j, dir < 0 ? 'end' : 'start');
+        return true;
+      },
+      next: () => this.nextStep(cell.id, false),
+    });
     const content: CellEditor =
       cell.type === 'math' ? this.mathEditor(cell, el)
       : cell.type === 'markdown' ? this.textEditor(cell, el)
@@ -557,6 +593,18 @@ export class NotebookView {
           },
           next: () => this.nextStep(cell.id, false),
         })
+      : cell.type === 'layout' ? layoutEditor(cell, gridCtx())
+      : cell.type === 'matrix' ? matrixEditor(cell, {
+          ...gridCtx(),
+          practice: () => !!this.nb.practice,
+          continueBelow: (rows, suggestions, augmented) => {
+            const next = matrixCell(rows.length, rows[0]?.length ?? 1, augmented);
+            next.rows = rows;
+            setMatrixSuggestions(next, suggestions);
+            this.insertCell(this.index(cell.id) + 1, next);
+          },
+        })
+      : cell.type === 'proof' ? proofEditor(cell, gridCtx())
       : this.dividerEditor(cell, el);
 
     let open = false;
@@ -610,6 +658,9 @@ export class NotebookView {
         cell.type === 'system' && edit && nextSystemRows(cell, !!this.nb.practice)
           ? { label: this.nb.practice ? '↓  Next system (copy)' : '↓  Next system (multiply / distribute)', hint: '↵ in a note', run: () => content.continueSystem?.() }
           : null,
+        cell.type === 'matrix' && edit && nextMatrix(cell, !!this.nb.practice)
+          ? { label: this.nb.practice ? '↓  Next matrix (copy)' : '↓  Next matrix (apply row operations)', hint: '↵ in a note', run: () => content.continueMatrix?.() }
+          : null,
         cell.type === 'system' && edit && cell.rows.some((r) => r.latex.trim())
           ? {
               label: '📈  Graph these equations',
@@ -627,6 +678,7 @@ export class NotebookView {
               { label: 'Add divider below', hint: '⌥H', run: () => this.insertCell(at(), dividerCell()) },
               { label: 'Add system (elimination) below', hint: '⌥S', run: () => this.insertCell(at(), systemCell()) },
               { label: 'Add “Let x = …” box below', run: () => this.insertCell(at(), variablesCell()) },
+              { label: 'Add layout below…', run: () => this.layoutMenu(menuBtn, at()) },
               null,
               { label: 'Move up', hint: '⌥↑', run: () => this.moveCell(cell.id, -1) },
               { label: 'Move down', hint: '⌥↓', run: () => this.moveCell(cell.id, 1) },
@@ -644,6 +696,7 @@ export class NotebookView {
       h('button', { onclick: () => this.insertCell(this.index(cell.id) + 1, dividerCell()) }, '+ Divider'),
       h('button', { onclick: () => this.insertCell(this.index(cell.id) + 1, systemCell()) }, '+ System'),
       h('button', { onclick: () => this.insertCell(this.index(cell.id) + 1, variablesCell()) }, '+ Let x ='),
+      h('button', { onclick: (e: Event) => this.layoutMenu(e.currentTarget as HTMLElement, this.index(cell.id) + 1) }, '+ Layout ▾'),
     );
 
     el.append(h('div', { class: 'gutter' }, numberEl), h('div', { class: 'cell-body' }, content.el, commentsEl), actions);
