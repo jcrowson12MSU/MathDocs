@@ -87,8 +87,23 @@ export interface VariablesCell {
  *   cells[2] = [ , bottom row…].
  * - longdiv: long division; cells[0] = [quotient], cells[1] = [divisor, dividend], then one work line per row
  *   (lines alternate: what's subtracted, with a rule under it, then what's left).
+ * - usub: u-substitution; cells = [[integral], [u, du], [integral in u], [result in u], [result in x]].
+ * - parts: integration by parts; cells = [[u, dv], [du, v], [uv − ∫v du], [result]].
+ * - tabular: the DI method; one [D, I] row per line, then [answer] last.
  */
-export type LayoutKind = 'box' | 'diamond' | 'synthetic' | 'longdiv';
+export type LayoutKind = 'box' | 'diamond' | 'synthetic' | 'longdiv' | 'usub' | 'parts' | 'tabular';
+
+/** A limit table: f(x) at x values closing in on a from each side (the limit itself is the student's). */
+export interface LimitCell {
+  id: string;
+  type: 'limit';
+  expr: string;
+  /** What x approaches: a number, or \infty / -\infty. */
+  at: string;
+  /** The student's answer. */
+  answer: string;
+  comments: Comment[];
+}
 
 export interface LayoutCell {
   id: string;
@@ -121,7 +136,7 @@ export interface ProofCell {
   comments: Comment[];
 }
 
-export type Cell = MathCell | TextCell | DividerCell | SystemCell | VariablesCell | LayoutCell | MatrixCell | ProofCell;
+export type Cell = MathCell | TextCell | DividerCell | SystemCell | VariablesCell | LayoutCell | MatrixCell | ProofCell | LimitCell;
 
 export interface ExprItem {
   id: string;
@@ -294,12 +309,19 @@ export function layoutCell(layout: LayoutKind): LayoutCell {
     layout === 'box' ? blank(3, 3)
     : layout === 'diamond' ? blank(1, 4)
     : layout === 'synthetic' ? blank(3, 5)
+    : layout === 'usub' ? [[''], ['', ''], [''], [''], ['']]
+    : layout === 'parts' ? [['', ''], ['', ''], [''], ['']]
+    : layout === 'tabular' ? [['', ''], ['', ''], ['', ''], ['', ''], ['']]
     : [[''], ['', ''], [''], [''], [''], ['']];
   return { id: newId(), type: 'layout', layout, cells, ...(layout === 'longdiv' ? { indents: [0, 0, 0, 0] } : {}), comments: [] };
 }
 
 export function matrixCell(rows = 2, cols = 3, augmented = true): MatrixCell {
   return { id: newId(), type: 'matrix', rows: blank(rows, cols), notes: Array(rows).fill(''), augmented, comments: [] };
+}
+
+export function limitCell(expr = '', at = ''): LimitCell {
+  return { id: newId(), type: 'limit', expr, at, answer: '', comments: [] };
 }
 
 export function proofCell(): ProofCell {
@@ -395,7 +417,10 @@ export function normalize(raw: unknown): Notebook {
       }
       const strings = (a: any) => (Array.isArray(a) ? a.map((x: any) => String(x ?? '')) : []);
       const grid = (a: any) => (Array.isArray(a) ? a.map(strings) : []);
-      if (c.type === 'layout' && ['box', 'diamond', 'synthetic', 'longdiv'].includes(c.layout)) {
+      if (c.type === 'limit') {
+        return { id, type: 'limit', expr: String(c.expr ?? ''), at: String(c.at ?? ''), answer: String(c.answer ?? ''), comments };
+      }
+      if (c.type === 'layout' && ['box', 'diamond', 'synthetic', 'longdiv', 'usub', 'parts', 'tabular'].includes(c.layout)) {
         const fresh = layoutCell(c.layout);
         const cells = grid(c.cells);
         return {

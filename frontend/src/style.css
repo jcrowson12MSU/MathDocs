@@ -594,3 +594,25 @@ body.printing .graph-panel { width: 6in !important; flex: none !important; }
 .geo-tool.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
 .geo-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .parent-select { font: inherit; font-size: 12px; border: none; background: transparent; color: inherit; }
+
+/* ---- Calculus layouts and limit tables ---- */
+.calc-row { display: flex; align-items: center; gap: 8px; margin: 4px 0; flex-wrap: wrap; }
+.calc-label { color: var(--muted); font-size: 1.05em; white-space: nowrap; }
+.calc-wide { min-width: 14em; }
+.calc-mid { min-width: 7em; }
+.parts-grid { display: inline-grid; grid-template-columns: auto auto auto auto; gap: 6px 10px; align-items: center; padding: 8px 12px; border: 1.5px solid var(--line); border-radius: 8px; margin-bottom: 6px; }
+.di-grid { display: inline-grid; grid-template-columns: 2em auto auto; gap: 4px 12px; align-items: center; padding: 6px 12px; border: 1.5px solid var(--line); border-radius: 8px; margin-bottom: 6px; }
+.di-head { font-weight: 600; text-align: center; border-bottom: 1.5px solid var(--line); }
+.di-sign { font-weight: 600; color: #d6336c; text-align: center; font-size: 1.15em; }
+.limit-field { min-width: 8em; font-size: 1.15em; border: 1px dashed var(--line); border-radius: 4px; padding: 1px 4px; }
+.limit-field.small { min-width: 3em; }
+.limit-table { display: flex; gap: 28px; flex-wrap: wrap; margin: 8px 0; }
+.limit-title { font-size: 12px; color: var(--muted); margin-bottom: 2px; }
+.limit-grid { display: grid; grid-template-columns: auto auto; border: 1.5px solid var(--line); border-radius: 6px; overflow: hidden; font-variant-numeric: tabular-nums; }
+.limit-grid span { padding: 3px 12px; border-top: 1px solid var(--line); text-align: right; }
+.limit-grid span:nth-child(2n) { border-left: 1.5px solid var(--line); min-width: 7em; }
+.limit-grid .limit-head { border-top: none; background: var(--accent-soft); font-weight: 600; text-align: center; }
+.limit-blank { background: repeating-linear-gradient(90deg, transparent 0 6px, var(--line) 6px 7px); background-size: 100% 1px; background-repeat: no-repeat; background-position: 0 85%; }
+.calc-param { flex-wrap: wrap; }
+.calc-row > math-field, .parts-grid > math-field, .di-grid > math-field { display: inline-block; width: auto; flex: 0 0 auto; }
+.calc-row > math-field.calc-wide, .calc-row > math-field.limit-field:not(.small) { min-width: 14em; }

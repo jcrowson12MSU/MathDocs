@@ -7,7 +7,7 @@ import { renderMarkdown } from '../markdown';
 import katex from 'katex';
 import { applyOperation } from '../mathfn';
 import {
-  dividerCell, layoutCell, mathCell, matrixCell, meaningOf, newId, nowIso, proofCell, systemCell, textCell, variablesCell,
+  dividerCell, layoutCell, limitCell, mathCell, matrixCell, meaningOf, newId, nowIso, proofCell, systemCell, textCell, variablesCell,
   type LayoutKind,
   type Cell, type DividerCell, type MathCell, type Notebook, type TextCell,
 } from '../model';
@@ -23,6 +23,8 @@ import { variablesEditor } from './variables';
 import { layoutEditor } from './layouts';
 import { matrixEditor, nextMatrix, setMatrixSuggestions } from './matrix';
 import { proofEditor } from './proof';
+import { limitEditor } from './limit';
+import { installCalculusKeyboard } from '../keyboard';
 import { cleanLatex, substitute, valueStep } from '../substitute';
 import { solutionSet } from '../inequality';
 import { renderNumberLine } from './numberline';
@@ -72,11 +74,17 @@ const LAYOUTS: { label: string; make: () => Cell }[] = [
   { label: '⟌  Long division', make: () => layoutCell('longdiv' as LayoutKind) },
   { label: '[ ]  Matrix (row operations)', make: () => matrixCell() },
   { label: '∴  Two-column proof', make: () => proofCell() },
+  { label: 'lim  Limit table', make: () => limitCell() },
+  { label: '∫  u-substitution', make: () => layoutCell('usub' as LayoutKind) },
+  { label: '∫  Integration by parts', make: () => layoutCell('parts' as LayoutKind) },
+  { label: '±  Tabular (DI) integration', make: () => layoutCell('tabular' as LayoutKind) },
 ];
 
 export class NotebookView {
   el = h('div', { class: 'notebook-view' });
   private views = new Map<string, CellView>();
+  /** Redraws for cells that look different in practice mode (limit tables). */
+  private practiceRefresh = new Set<() => void>();
   private cellsEl = h('div', { class: 'cells' });
   private statusEl = h('span', { class: 'save-status' });
   private graphs: GraphPanel;
@@ -209,6 +217,7 @@ export class NotebookView {
     this.showPractice(btn);
     this.graphs.render();
     this.graphs.refresh();
+    this.practiceRefresh.forEach((f) => f());
     this.changed();
     toast(this.nb.practice
       ? 'Practice mode on: next steps start as a plain copy, and graphs don’t mark crossings.'
@@ -291,6 +300,7 @@ export class NotebookView {
   }
 
   private toggleKeyboard(): void {
+    installCalculusKeyboard();
     const kb = window.mathVirtualKeyboard;
     if (kb.visible) kb.hide();
     else {
@@ -395,6 +405,7 @@ export class NotebookView {
       : cell.type === 'layout' ? cell.cells.some((r) => r.some((v) => v.trim()))
       : cell.type === 'matrix' ? cell.rows.some((r) => r.some((v) => v.trim())) || cell.notes.some((n) => n.trim())
       : cell.type === 'proof' ? cell.given.trim() || cell.prove.trim() || cell.rows.some((r) => r.statement.trim() || r.reason.trim())
+      : cell.type === 'limit' ? cell.expr.trim() || cell.answer.trim()
       : cell.title.trim();
     if (hasContent || cell.comments.length) {
       toast('Cell deleted.', { label: 'Undo', run: () => this.insertCell(Math.min(i, this.nb.cells.length), cell) }, 6000);
@@ -606,6 +617,11 @@ export class NotebookView {
           },
         })
       : cell.type === 'proof' ? proofEditor(cell, gridCtx())
+      : cell.type === 'limit' ? (() => {
+          const ed = limitEditor(cell, { ...gridCtx(), practice: () => !!this.nb.practice });
+          this.practiceRefresh.add(ed.refresh);
+          return ed;
+        })()
       : this.dividerEditor(cell, el);
 
     let open = false;

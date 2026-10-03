@@ -3,6 +3,7 @@
 // the app only keeps the boxes lined up.
 
 import type { LayoutCell } from '../model';
+import katex from 'katex';
 import { h } from '../ui';
 import { gridMath, gridNavigator, type GridContext, type GridField } from './gridnav';
 
@@ -38,7 +39,71 @@ export function layoutEditor(cell: LayoutCell, ctx: LayoutContext) {
     if (cell.layout === 'box') buildBox();
     else if (cell.layout === 'diamond') buildDiamond();
     else if (cell.layout === 'synthetic') buildSynthetic();
+    else if (cell.layout === 'usub') buildUSub();
+    else if (cell.layout === 'parts') buildParts();
+    else if (cell.layout === 'tabular') buildTabular();
     else buildLongDivision();
+  };
+
+  /** A label written in math (e.g. "u ="), shown beside a box. */
+  const label = (latex: string) => {
+    const el = h('span', { class: 'calc-label' });
+    el.innerHTML = katex.renderToString(latex, { throwOnError: false });
+    return el;
+  };
+  const row = (...parts: (HTMLElement | string)[]) => h('div', { class: 'calc-row' }, ...parts);
+
+  // u-substitution: the integral, u and du, the integral in u, the result in u, then back in x.
+  const buildUSub = () => {
+    const orig = field(0, 0, 'calc-wide', '\\int f(x)\\,dx');
+    const u = field(1, 0, 'calc-mid');
+    const du = field(1, 1, 'calc-mid');
+    const inU = field(2, 0, 'calc-wide', '\\int \\ldots \\,du');
+    const resU = field(3, 0, 'calc-wide');
+    const resX = field(4, 0, 'calc-wide');
+    nav = [[orig], [u, du], [inU], [resU], [resX]];
+    box.append(
+      row(orig.el),
+      row(label('\\text{Let } u ='), u.el, label('\\quad du ='), du.el),
+      row(label('\\text{In } u\\text{:}'), inU.el),
+      row(label('='), resU.el),
+      row(label('\\text{In } x\\text{:}\\;='), resX.el),
+    );
+  };
+
+  // Integration by parts: u and dv chosen, du and v found, then uv − ∫v du.
+  const buildParts = () => {
+    const u = field(0, 0, 'calc-mid');
+    const dv = field(0, 1, 'calc-mid');
+    const du = field(1, 0, 'calc-mid');
+    const v = field(1, 1, 'calc-mid');
+    const formula = field(2, 0, 'calc-wide', 'uv-\\int v\\,du');
+    const result = field(3, 0, 'calc-wide');
+    nav = [[u, dv], [du, v], [formula], [result]];
+    box.append(
+      h('div', { class: 'parts-grid' },
+        label('u ='), u.el, label('dv ='), dv.el,
+        label('du ='), du.el, label('v ='), v.el),
+      row(label('\\int u\\,dv = uv-\\int v\\,du ='), formula.el),
+      row(label('='), result.el),
+    );
+  };
+
+  // The DI (tabular) method: signs alternate +, −, +, … down the left; D column differentiates, I integrates.
+  const buildTabular = () => {
+    const rows = cell.cells.length - 1;
+    const grid = h('div', { class: 'di-grid' }, h('span', {}, ''), h('span', { class: 'di-head' }, 'D'), h('span', { class: 'di-head' }, 'I'));
+    for (let r = 0; r < rows; r++) {
+      const d = field(r, 0, 'calc-mid');
+      const i = field(r, 1, 'calc-mid');
+      grid.append(h('span', { class: 'di-sign' }, r % 2 === 0 ? '+' : '−'), d.el, i.el);
+      nav.push([d, i]);
+    }
+    const answer = field(rows, 0, 'calc-wide');
+    nav.push([answer]);
+    box.append(grid, row(label('\\int = '), answer.el), h('div', { class: 'layout-tools' },
+      button('+ row', 'Add a row to the table', () => cell.cells.splice(rows, 0, ['', ''])),
+      rows > 2 ? button('− row', 'Remove the last row', () => cell.cells.splice(rows - 1, 1)) : null));
   };
 
   // Area model: top terms across, side terms down, products inside.

@@ -158,6 +158,23 @@ goes to the next one.
   (`\angle`, `\cong`, `\triangle`, `\overline{AB}`, `\parallel`, `\perp`); reasons are plain text. Enter on the
   last reason adds a row.
 
+### Calculus cells
+
+Also under **+ Layout ▾**:
+
+- **Limit table**: type f(x) and what x approaches (a number, or `\infty`). The table shows f(x) at x values
+  closing in from the left and from the right (or 10, 100, 1000 … toward ∞). Evaluating f is arithmetic; the
+  limit itself goes in the **lim f(x) =** box and is yours. In practice mode the f(x) column is blank.
+- **u-substitution**: the integral, **Let u =** and **du =**, the integral in u, its result, and the result back in x.
+- **Integration by parts**: u, dv, du, v, then uv − ∫v du and the result.
+- **Tabular (DI) integration**: D and I columns with the signs +, −, +, … down the side; **+ row** adds rows.
+
+Nothing in these layouts is worked out for you.
+
+**Calculus keyboard.** **⌨ Keyboard → ∫ d/dx** has keys for d/dx, dy/dx, f′, f″, ∂, ∇, ∫ (indefinite, definite,
+double, triple, line), evaluation bars, + C, limits (two-sided and one-sided), Σ, ∞, →, Δ, vectors (⃗v, ⟨a, b⟩,
+î ĵ k̂, ‖v‖), · and ×.
+
 ### Number lines
 
 Choose **Show number line** in a step's ⋯ menu to draw the step's inequality (or equation) in one letter
@@ -231,7 +248,22 @@ Choose **Graph this step** in a step's ⋯ menu, or open **📈 Graphs → + Add
 - **Slope triangle** for `y = f(x)`: two dots on the line (drag them; they land on whole-number x) with the
   run and rise drawn between them, e.g. **run = 2**, **rise = 4**. It never shows the slope itself.
 - **Calculus tools** for `y = f(x)`: derivative curve, a draggable tangent line that shows its slope, and
-  shaded area under the curve between two draggable bounds.
+  shaded area under the curve between two draggable bounds. In practice mode the derivative curve, the slope and
+  the area are hidden (the tangent line and the shading stay).
+- **Riemann sum**: rectangles under the curve between two draggable ends on the x-axis, with **n** (1–100) and
+  **Left / Right / Midpoint / Trapezoids**. The total of the rectangles is shown (hidden in practice mode).
+- **Secant line**: through x = a and x = a + h; drag the first point along the curve and slide **h** toward 0.
+  Its slope (a difference quotient) is shown, except in practice mode.
+- **Series**: `y = \sum_{k=0}^{n} \frac{x^k}{k!}` graphs the partial sum, with **n** as a slider that steps by 1.
+  You write the series; the app doesn't make Taylor polynomials for you.
+- **Sequences**: `a_n = (1 + 1/n)^n` plots the points (n, aₙ) for n = 1, 2, 3 …
+- **Vectors**: `\langle 3, 4\rangle` (or `\vec{v} = \langle 3, 4\rangle`) draws an arrow from the origin.
+- **Vector fields and phase planes**: `\langle -y, x\rangle` draws arrows across the view (longer where the field
+  is stronger).
+- **Slope fields**: `\frac{dy}{dx} = x - y` (or `y' = x - y`). No solution curves are drawn for you — graph your
+  own solution (with a slider for the constant, like `y = x - 1 + Ce^{-x}`) on top to check it follows the field.
+- **3D** (under the graph): `z = x^2 + y^2` surfaces, space curves `(\cos t, \sin t, t)` (with ranges in braces),
+  points `(1, 2, 3)` and vectors `\langle 1, 2, 2\rangle`. Drag to turn the view.
 - **Tables of points**: type x and y values, or pick "y from …" to compute y from an expression.
   You can choose to connect the points. The **label** column names a point on the graph (e.g. "meet").
 - **Annotations**: say what the **x-axis** and **y-axis** represent (e.g. "time (hours)"), give each
