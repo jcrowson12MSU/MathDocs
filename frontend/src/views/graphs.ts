@@ -41,7 +41,11 @@ interface PanelOptions {
   /** Practice mode: don't mark crossings or give the slope triangle's numbers. */
   practice?: () => boolean;
   /** Axis labels to use when a graph has none of its own (what x and y stand for in "Let x = …"). */
-  axisDefaults?: () => { x: string; y: string };
+  axisDefaults?: (graph: Graph) => { x: string; y: string };
+  /** The Let boxes that can label axes, for the "Axis labels from" menu. */
+  letBoxes?: () => { id: string; label: string }[];
+  /** Which Let box labels this graph now (resolving older notebooks' default). */
+  letBoxOf?: (graph: Graph) => string | null;
 }
 
 export class GraphPanel {
@@ -83,9 +87,11 @@ export class GraphPanel {
     return g;
   }
 
-  /** Called from a math step's "graph this" button. */
-  addExpression(latex: string): void {
+  /** Called from a math step's "graph this" button; `letId` is the Let box above that step, if any. */
+  addExpression(latex: string, letId?: string): void {
     const g = this.nb.graphs[0] ?? (this.nb.graphs.push(newGraph()), this.nb.graphs[0]);
+    // A graph made for a word problem takes its axis labels from that problem's Let box.
+    if (g.labelsFrom === undefined) g.labelsFrom = letId ?? null;
     const blank = g.items.find((i): i is ExprItem => i.kind === 'expr' && !i.latex.trim());
     if (blank) blank.latex = latex;
     else g.items.push(exprItem(latex, nextColor(g)));
@@ -164,7 +170,7 @@ class GraphCard {
         ro ? null : h('button', { class: 'icon', title: 'Delete graph', onclick: onDelete }, '✕'),
       ),
       h('div', { class: 'board-wrap' }, this.yAxisLabel, h('div', { class: 'board-col' }, this.boardDiv, this.xAxisLabel)),
-      ro ? null : h('div', { class: 'axis-fields' }, axisInput('x'), axisInput('y'),
+      ro ? null : h('div', { class: 'axis-fields' }, axisInput('x'), axisInput('y'), this.labelsFromSelect(),
         this.toggle('Mark intersections', graph.intersections !== false, (on) => (graph.intersections = on ? undefined : false)),
         this.toggle('Degrees', graph.angles === 'deg', (on) => this.setDegrees(on)),
         this.toggle('π ticks', !!graph.piTicks, (on) => (graph.piTicks = on || undefined)),
@@ -234,9 +240,25 @@ class GraphCard {
     }
   };
 
+  /** "Axis labels from: Let x = number of months …": which word problem's Let box names this graph's axes. */
+  private labelsFromSelect(): HTMLElement | null {
+    const boxes = this.opts.letBoxes?.() ?? [];
+    if (!boxes.length) return null;
+    const current = this.opts.letBoxOf?.(this.graph) ?? null;
+    const select = h('select', { class: 'parent-select', title: 'Which “Let x = …” box names this graph’s axes' },
+      h('option', { value: '' }, 'Axis labels: typed only'),
+      ...boxes.map((b) => h('option', { value: b.id, selected: b.id === current }, `Axis labels from: ${b.label}`)));
+    select.addEventListener('change', () => {
+      this.graph.labelsFrom = select.value || null;
+      this.showAxisLabels();
+      this.opts.onChange();
+    });
+    return h('label', { class: 'chip' }, select);
+  }
+
   showAxisLabels(): void {
     // A label typed on the graph wins; otherwise use what x and y stand for in the "Let x = …" box.
-    const defaults = this.opts.axisDefaults?.() ?? { x: '', y: '' };
+    const defaults = this.opts.axisDefaults?.(this.graph) ?? { x: '', y: '' };
     this.xAxisLabel.textContent = this.graph.xLabel ?? defaults.x;
     this.yAxisLabel.textContent = this.graph.yLabel ?? defaults.y;
     for (const axis of ['x', 'y'] as const) {

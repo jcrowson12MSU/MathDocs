@@ -125,8 +125,10 @@ and the arithmetic is left to you.
 ### "Let x = …" (word problems)
 
 **+ Let x =** between steps (or **Add “Let x = …” box below** in the ⋯ menu) adds a box for what each letter
-stands for: *x = number of months*, *y = total paid in dollars*. Graphs use the meanings of x and y as their axis
-labels unless you type labels on the graph.
+stands for: *x = number of months*, *y = total paid in dollars*. A graph can use the meanings of x and y as its axis
+labels: **Graph this step** links the new graph to the nearest Let box above the step, and the **Axis labels from**
+menu under each graph picks a Let box (or none). Labels you type on the graph always win. (In older notebooks with
+one graph and one Let box, the two are linked automatically.)
 
 ### Practice mode
 

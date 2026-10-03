@@ -119,6 +119,12 @@ export function systemEditor(cell: SystemCell, ctx: SystemEditorContext) {
     frame = requestAnimationFrame(() => (frame = requestAnimationFrame(alignNow)));
   };
   const alignNow = () => {
+    // The notes column is as wide as the widest note (×(−2) needs more room than ×3), so every equation
+    // still starts at the same place.
+    const noteEls = [...box.querySelectorAll<HTMLElement>('.system-note, .system-note-spacer')];
+    for (const el of noteEls) el.style.width = '';
+    const widest = Math.max(64, ...notes.map((n) => n.mf.getBoundingClientRect().width));
+    for (const el of noteEls) el.style.width = `${Math.ceil(widest)}px`;
     const fields = [...equations.map((e) => e.mf), result];
     for (const mf of fields) mf.style.marginLeft = '0px';
     const xs = fields.map(relationX);
@@ -220,6 +226,7 @@ export function systemEditor(cell: SystemCell, ctx: SystemEditorContext) {
       note.addEventListener('input', () => {
         if (note.value.trim()) row.note = note.value;
         else delete row.note;
+        align();
         ctx.onChange();
       });
       eq.addEventListener('input', () => {

@@ -7,8 +7,8 @@ import { renderMarkdown } from '../markdown';
 import katex from 'katex';
 import { applyOperation } from '../mathfn';
 import {
-  dividerCell, layoutCell, limitCell, mathCell, matrixCell, meaningOf, newId, nowIso, proofCell, systemCell, textCell, variablesCell,
-  type LayoutKind,
+  axisLetBoxes, dividerCell, layoutCell, letBoxAbove, letBoxFor, limitCell, mathCell, matrixCell, meaningIn, newId, nowIso, proofCell, systemCell, textCell, variablesCell,
+  type Graph, type LayoutKind,
   type Cell, type DividerCell, type MathCell, type Notebook, type TextCell,
 } from '../model';
 import { loadSettings, saveSettings, shareBase } from '../settings';
@@ -207,7 +207,17 @@ export class NotebookView {
       onChange: () => this.changed(),
       practice: () => !!this.nb.practice,
       // Axis labels default to what x and y stand for in the notebook's "Let x = …" boxes.
-      axisDefaults: () => ({ x: meaningOf(this.nb, 'x'), y: meaningOf(this.nb, 'y') }),
+      letBoxes: () => axisLetBoxes(this.nb).map((c) => {
+        const x = meaningIn(c, 'x');
+        const y = meaningIn(c, 'y');
+        const text = [x && `x = ${x}`, y && `y = ${y}`].filter(Boolean).join(', ');
+        return { id: c.id, label: `Let ${text.length > 40 ? `${text.slice(0, 39)}…` : text}` };
+      }),
+      letBoxOf: (g: Graph) => letBoxFor(this.nb, g)?.id ?? null,
+      axisDefaults: (g: Graph) => {
+        const box = letBoxFor(this.nb, g);
+        return { x: meaningIn(box, 'x'), y: meaningIn(box, 'y') };
+      },
     };
   }
 
@@ -668,7 +678,7 @@ export class NotebookView {
               label: '📈  Graph this step',
               run: () => {
                 if (!this.graphsOpen) this.toggleGraphs();
-                this.graphs.addExpression(cell.latex);
+                this.graphs.addExpression(cell.latex, letBoxAbove(this.nb, this.index(cell.id))?.id);
               },
             }
           : null,
@@ -683,7 +693,8 @@ export class NotebookView {
               label: '📈  Graph these equations',
               run: () => {
                 if (!this.graphsOpen) this.toggleGraphs();
-                for (const r of cell.rows) if (r.latex.trim()) this.graphs.addExpression(r.latex);
+                const let_ = letBoxAbove(this.nb, this.index(cell.id))?.id;
+                for (const r of cell.rows) if (r.latex.trim()) this.graphs.addExpression(r.latex, let_);
               },
             }
           : null,

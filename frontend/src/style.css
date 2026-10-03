@@ -403,6 +403,7 @@ math-field.work-copy[read-only] { cursor: default; border-color: transparent !im
 .system-row, .system-result { display: flex; align-items: center; gap: 4px; }
 .system-row.add { min-height: 22px; }
 .system-note, .system-note-spacer { width: 64px; flex: none; }
+math-field.system-note { width: auto; min-width: 64px; }
 math-field.system-note {
   font-size: 18px; padding: 0 2px; text-align: right; color: var(--work);
   border: 1px dashed transparent !important; border-radius: 6px; background: transparent;

@@ -248,6 +248,11 @@ export interface Graph {
   square?: boolean;
   /** A rotatable 3D graph (z = f(x, y), space curves, points and vectors). */
   view?: '3d';
+  /**
+   * The "Let x = …" box whose meanings label this graph's axes (its cell id), or null for none.
+   * Unset (older notebooks): the notebook's only Let box, if it has just one graph.
+   */
+  labelsFrom?: string | null;
   /** 3D: each axis runs from −range3d to range3d. */
   range3d?: number;
 }
@@ -292,14 +297,33 @@ export function variablesCell(vars: { name: string; meaning: string }[] = [{ nam
   return { id: newId(), type: 'variables', vars, comments: [] };
 }
 
-/** What a letter stands for, from the notebook's "Let x = …" boxes (the first one that defines it). */
-export function meaningOf(nb: Notebook, letter: string): string {
-  for (const c of nb.cells) {
-    if (c.type !== 'variables') continue;
-    const v = c.vars.find((v) => v.name.trim() === letter && v.meaning.trim());
-    if (v) return v.meaning.trim();
+/** What a letter stands for in one "Let x = …" box ('' if it doesn't say). */
+export function meaningIn(cell: VariablesCell | undefined, letter: string): string {
+  return cell?.vars.find((v) => v.name.trim() === letter && v.meaning.trim())?.meaning.trim() ?? '';
+}
+
+/** The Let boxes that say what x or y stands for (the ones that can label graph axes). */
+export function axisLetBoxes(nb: Notebook): VariablesCell[] {
+  return nb.cells.filter((c): c is VariablesCell => c.type === 'variables' && !!(meaningIn(c, 'x') || meaningIn(c, 'y')));
+}
+
+/** The Let box that labels this graph's axes, if any (see Graph.labelsFrom). */
+export function letBoxFor(nb: Notebook, graph: Graph): VariablesCell | undefined {
+  if (graph.labelsFrom === null) return undefined;
+  if (typeof graph.labelsFrom === 'string') {
+    return nb.cells.find((c): c is VariablesCell => c.type === 'variables' && c.id === graph.labelsFrom);
   }
-  return '';
+  const boxes = axisLetBoxes(nb);
+  return nb.graphs.length === 1 && boxes.length === 1 ? boxes[0] : undefined;
+}
+
+/** The nearest Let box above cell `index` that says what x or y stands for. */
+export function letBoxAbove(nb: Notebook, index: number): VariablesCell | undefined {
+  for (let i = index; i >= 0; i--) {
+    const c = nb.cells[i];
+    if (c?.type === 'variables' && (meaningIn(c, 'x') || meaningIn(c, 'y'))) return c;
+  }
+  return undefined;
 }
 
 const blank = (rows: number, cols: number) => Array.from({ length: rows }, () => Array<string>(cols).fill(''));
@@ -472,6 +496,7 @@ export function normalize(raw: unknown): Notebook {
         ...(g.piTicks === true ? { piTicks: true } : {}),
         ...(g.square === true ? { square: true } : {}),
         ...(g.view === '3d' ? { view: '3d' } : {}),
+        ...(typeof g.labelsFrom === 'string' || g.labelsFrom === null ? { labelsFrom: g.labelsFrom } : {}),
         ...(Number.isFinite(g.range3d) && g.range3d > 0 ? { range3d: g.range3d } : {}),
         bbox: Array.isArray(g.bbox) && g.bbox.length === 4 && g.bbox.every(Number.isFinite) ? g.bbox : [...DEFAULT_BBOX],
         items: Array.isArray(g.items) ? g.items.filter((i: any) => i && ['expr', 'table', 'note', 'unitcircle', 'construction'].includes(i.kind)) : [],
