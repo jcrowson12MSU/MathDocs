@@ -2,6 +2,7 @@
 
 import { ComputeEngine, compile } from '@cortex-js/compute-engine';
 import { solutionSet, yRegion, type Interval } from './inequality';
+export type { Interval };
 import { mixedNumbers } from './latexutil';
 
 export { mixedNumbers };
@@ -11,7 +12,15 @@ export const ce = new ComputeEngine();
 export type Params = Record<string, number>;
 
 export type Plottable =
-  | { kind: 'function'; f: (x: number, p: Params) => number; params: string[] }
+  /**
+   * y = f(x). `domain` is set by a restriction like y = x^2 {x < 2} (with dots at its ends); `holes` are the
+   * points where it's undefined but continues on both sides, like x = 2 in (x² − 4)/(x − 2).
+   */
+  | { kind: 'function'; f: (x: number, p: Params) => number; params: string[]; domain?: Interval[]; holes?: [number, number][] }
+  /** r = f(θ), for θ from `from` to `to`. */
+  | { kind: 'polar'; f: (theta: number, p: Params) => number; params: string[]; from: number; to: number }
+  /** (x(t), y(t)), for t from `from` to `to`. */
+  | { kind: 'parametric'; x: (t: number, p: Params) => number; y: (t: number, p: Params) => number; params: string[]; from: number; to: number }
   | { kind: 'implicit'; f: (x: number, y: number, p: Params) => number; params: string[] }
   /** x = 3, or an equation in x alone like 2x+3 = 5x−8 (drawn at its solutions). */
   | { kind: 'verticals'; xs: number[] }
@@ -72,13 +81,47 @@ export function hasErrors(json: Json): boolean {
   return Array.isArray(json) && (json[0] === 'Error' || json.slice(1).some(hasErrors));
 }
 
-export function analyze(latex: string): Plottable {
+export interface AnalyzeOptions {
+  /** Angles in degrees: sin x takes x in degrees, arcsin gives degrees, θ runs 0…360. */
+  degrees?: boolean;
+}
+
+/** y = x^2 {x < 2}: the expression and the restriction inside the braces at the end, if any. */
+export function splitRestriction(latex: string): [string, string | null] {
+  const m = /^([\s\S]*?)\s*(?:\\left\\lbrace|\\left\\\{|\\lbrace|\\\{)([\s\S]*?)(?:\\right\\rbrace|\\right\\\}|\\rbrace|\\\})\s*$/.exec(latex);
+  if (!m || !m[1].trim()) return [latex, null];
+  return [m[1], m[2]];
+}
+
+const TRIG = new Set(['Sin', 'Cos', 'Tan', 'Sec', 'Csc', 'Cot']);
+const ARC_TRIG = new Set(['Arcsin', 'Arccos', 'Arctan', 'Arcsec', 'Arccsc', 'Arccot']);
+
+/** Degrees mode: sin x → sin(x·π/180), arcsin x → arcsin(x)·180/π. */
+export function toDegrees(json: Json): Json {
+  if (!Array.isArray(json)) return json;
+  const args = json.slice(1).map(toDegrees);
+  if (TRIG.has(json[0])) return [json[0], ['Multiply', args[0], ['Divide', 'Pi', 180]], ...args.slice(1)];
+  if (ARC_TRIG.has(json[0])) return ['Multiply', [json[0], ...args], ['Divide', 180, 'Pi']];
+  return [json[0], ...args];
+}
+
+const hasTrig = (json: Json): boolean => Array.isArray(json) && (TRIG.has(json[0]) || json.slice(1).some(hasTrig));
+
+const paramsOf = (json: Json, exclude: string[]) =>
+  [...(ce.box(json).unknowns as string[])].filter((s) => !exclude.includes(s)).sort();
+
+export function analyze(latex: string, opts: AnalyzeOptions = {}): Plottable {
   if (!latex.trim()) return { kind: 'empty' };
+  const [main, restriction] = splitRestriction(latex);
+  if (restriction !== null) return restricted(main, restriction, opts);
   // 2\frac12x means 2½·x, as students write it (Compute Engine alone would read 2·½·x).
   const expr = ce.parse(mixedNumbers(latex));
-  const json: Json = expr.json;
+  let json: Json = expr.json;
   if (hasErrors(json)) return { kind: 'error', message: 'Finish typing the expression' };
   if (Array.isArray(json) && INEQUALITIES.has(json[0])) return inequality(latex);
+  if (opts.degrees) json = toDegrees(json);
+  const curve = polarOrParametric(json, opts);
+  if (curve) return curve;
   if (Array.isArray(json) && json[0] === 'Tuple') return points(json);
 
   let body: Json = json;
@@ -116,7 +159,103 @@ export function analyze(latex: string): Plottable {
   if (implicit) {
     return { kind: 'implicit', f: (x, y, p) => fn({ ...p, x, y }), params };
   }
-  return { kind: 'function', f: (x, p) => fn({ ...p, x }), params };
+  const f = (x: number, p: Params) => fn({ ...p, x });
+  const found = params.length ? [] : holes(body, (x) => f(x, {}));
+  return { kind: 'function', f, params, ...(found.length ? { holes: found } : {}) };
+}
+
+/** r = f(θ) or (x(t), y(t)), or null if it's neither. */
+function polarOrParametric(json: Json, opts: AnalyzeOptions, range?: [number, number]): Plottable | null {
+  const full: [number, number] = opts.degrees ? [0, 360] : [0, 2 * Math.PI];
+  if (Array.isArray(json) && json[0] === 'Equal' && json.length === 3 && (json[1] === 'r' || json[2] === 'r')) {
+    const body = json[1] === 'r' ? json[2] : json[1];
+    const used = symbolsIn(body);
+    if (used.has('x') || used.has('y') || used.has('r')) return null;
+    const fn = compileJson(body);
+    if (typeof fn === 'string') return { kind: 'error', message: fn };
+    const [from, to] = range ?? full;
+    return { kind: 'polar', f: (theta, p) => fn({ ...p, theta }), params: paramsOf(body, ['theta']), from, to };
+  }
+  if (Array.isArray(json) && json[0] === 'Tuple' && json.length === 3 && symbolsIn(json).has('t')) {
+    const used = symbolsIn(json);
+    if (used.has('x') || used.has('y')) return null;
+    const fx = compileJson(json[1]);
+    const fy = compileJson(json[2]);
+    if (typeof fx === 'string') return { kind: 'error', message: fx };
+    if (typeof fy === 'string') return { kind: 'error', message: fy };
+    // Around the circle for trig curves; otherwise −10 … 10. A restriction {0 ≤ t ≤ 5} sets it.
+    const [from, to] = range ?? (hasTrig(json) ? full : [-10, 10]);
+    return {
+      kind: 'parametric', x: (t, p) => fx({ ...p, t }), y: (t, p) => fy({ ...p, t }),
+      params: paramsOf(json, ['t']), from, to,
+    };
+  }
+  return null;
+}
+
+/** y = x^2 {x < 2}, r = θ {0 ≤ θ ≤ 4π}, (t, t^2) {−1 ≤ t ≤ 1}. */
+function restricted(main: string, restriction: string, opts: AnalyzeOptions): Plottable {
+  const set = solutionSet(restriction);
+  if (!set) return { kind: 'error', message: 'Write the restriction like {x < 2} or {−1 ≤ x ≤ 3}' };
+  let json: Json = ce.parse(mixedNumbers(main)).json;
+  if (hasErrors(json)) return { kind: 'error', message: 'Finish typing the expression' };
+  if (opts.degrees) json = toDegrees(json);
+  if (set.variable === 'theta' || set.variable === 't') {
+    if (set.intervals.length !== 1) return { kind: 'error', message: `Give one range for ${set.variable === 't' ? 't' : 'θ'}, like {0 ≤ t ≤ 5}` };
+    const [{ from, to }] = set.intervals;
+    if (!Number.isFinite(from) || !Number.isFinite(to) || from === null || to === null) {
+      return { kind: 'error', message: 'Give both ends of the range, like {0 ≤ t ≤ 5}' };
+    }
+    return polarOrParametric(json, opts, [from, to]) ?? { kind: 'error', message: `{… ${set.variable} …} restricts polar (r = …) or parametric ((x, y) in t) curves` };
+  }
+  if (set.variable !== 'x') return { kind: 'error', message: 'Restrict x, like {x < 2}' };
+  const a = analyze(main, opts);
+  if (a.kind !== 'function') return { kind: 'error', message: 'Restrictions work on y = … graphs' };
+  const intervals = set.intervals.map((i) => ({ ...i, from: i.from ?? -Infinity, to: i.to ?? Infinity }));
+  const inside = (x: number) =>
+    intervals.some((i) => (i.fromClosed ? x >= i.from : x > i.from) && (i.toClosed ? x <= i.to : x < i.to));
+  return {
+    ...a,
+    f: (x: number, p: Params) => (inside(x) ? a.f(x, p) : NaN),
+    domain: intervals,
+    holes: a.holes?.filter(([x]) => inside(x)),
+  };
+}
+
+/** Denominators in an expression: b in a/b, and the base of a negative power (x^{-1}). */
+function denominators(json: Json, out: Json[] = []): Json[] {
+  if (!Array.isArray(json)) return out;
+  if (json[0] === 'Divide') out.push(json[2]);
+  if (json[0] === 'Power' && typeof json[2] === 'number' && json[2] < 0) out.push(json[1]);
+  json.slice(1).forEach((j: Json) => denominators(j, out));
+  return out;
+}
+
+/** Where f has a hole: a denominator is 0 there but f is defined, and agrees, on both sides. */
+function holes(body: Json, f: (x: number) => number): [number, number][] {
+  const out: [number, number][] = [];
+  for (const d of denominators(body)) {
+    if (!isAlgebraic(d) || !symbolsIn(d).has('x')) continue;
+    let roots: number[] = [];
+    try {
+      const raw: unknown = ce.box(['Equal', d, 0]).solve('x');
+      if (!Array.isArray(raw)) continue;
+      roots = raw.map((r: any) => r.N().valueOf()).filter((v: unknown): v is number => typeof v === 'number' && Number.isFinite(v));
+    } catch {
+      continue;
+    }
+    for (const r of roots) {
+      if (Number.isFinite(f(r))) continue;
+      const e = 1e-6 * Math.max(1, Math.abs(r));
+      const left = f(r - e);
+      const right = f(r + e);
+      if (!Number.isFinite(left) || !Number.isFinite(right)) continue;
+      const y = (left + right) / 2;
+      if (Math.abs(left - right) > 1e-3 * Math.max(1, Math.abs(y))) continue;
+      if (!out.some(([x]) => Math.abs(x - r) < 1e-9)) out.push([r, Math.round(y * 1e6) / 1e6]);
+    }
+  }
+  return out;
 }
 
 /** Functions whose solutions Compute Engine finds completely (sin x = 0 has infinitely many, for example). */

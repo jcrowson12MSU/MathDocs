@@ -585,3 +585,12 @@ body.printing .graph-panel { width: 6in !important; flex: none !important; }
 .layout-field.is-empty, .matrix-entry.is-empty, .proof-statement.is-empty { border-color: var(--line); }
 .area-cell .layout-field.is-empty, .synth-cell .layout-field.is-empty, .ld-row .layout-field.is-empty { border-color: transparent; }
 .layout-box:hover .area-cell .layout-field.is-empty, .layout-box:hover .synth-cell .layout-field.is-empty { border-color: var(--line); }
+
+/* Geometry construction palette, unit circle row, parent select */
+.geo-title { font-weight: 600; flex: 1; padding-left: 4px; }
+.geo-tools { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0 4px; }
+.geo-tool { font: inherit; font-size: 12px; padding: 3px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); color: var(--ink); cursor: pointer; white-space: nowrap; }
+.geo-tool:hover { border-color: var(--accent); }
+.geo-tool.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.geo-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.parent-select { font: inherit; font-size: 12px; border: none; background: transparent; color: inherit; }

@@ -46,6 +46,10 @@ function conditions(json: Json): Condition[] | null {
     return parts.every(Boolean) ? (parts as Condition[][]).flat() : null;
   }
   if (RELS.has(json[0]) && json.length === 3) return [{ rel: json[0], left: json[1], right: json[2] }];
+  // A chain with the same relation throughout (−1 ≤ x ≤ 3) comes as one LessEqual(−1, x, 3).
+  if (RELS.has(json[0]) && json[0] !== 'Equal' && json.length > 3) {
+    return json.slice(1, -1).map((left: Json, i: number) => ({ rel: json[0], left, right: json[i + 2] }));
+  }
   return null;
 }
 
@@ -94,7 +98,8 @@ function isAlgebraic(json: Json, variable: string): boolean {
 function roots(left: Json, right: Json, variable: string): number[] | null {
   if (!isAlgebraic(left, variable) || !isAlgebraic(right, variable)) return null;
   try {
-    const raw: unknown = ce.box(['Equal', left, right]).solve(variable);
+    // As left − right = 0: Compute Engine finds no solution for −1 = x written the other way round.
+    const raw: unknown = ce.box(['Equal', ['Subtract', left, right], 0]).solve(variable);
     if (!Array.isArray(raw)) return null;
     return (raw as { N(): { valueOf(): unknown } }[])
       .map((s) => s.N().valueOf())

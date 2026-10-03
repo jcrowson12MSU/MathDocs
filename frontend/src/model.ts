@@ -141,6 +141,8 @@ export interface ExprItem {
   slopeTriangle?: { x1: number; x2: number } | null;
   /** Shaded area under the curve between two draggable bounds, or null when off. */
   area?: { from: number; to: number } | null;
+  /** A parent function the student chose (e.g. "x^2"), drawn faintly behind this one. */
+  parent?: string | null;
 }
 
 export interface TableItem {
@@ -167,7 +169,46 @@ export interface NoteItem {
   pos: [number, number];
 }
 
-export type GraphItem = ExprItem | TableItem | NoteItem;
+/** The unit circle with a draggable angle (snapping to multiples of 15°) and its reference triangle. */
+export interface UnitCircleItem {
+  id: string;
+  kind: 'unitcircle';
+  color: string;
+  hidden?: boolean;
+  /** The angle in radians. */
+  angle: number;
+}
+
+/**
+ * One object in a geometry construction. Points are referred to by id; everything else is built from them
+ * (and from other objects), so dragging a point moves everything that depends on it.
+ */
+export type GeoObject =
+  | { id: string; type: 'point'; name: string; x: number; y: number }
+  | { id: string; type: 'segment' | 'line' | 'ray'; of: [string, string] }
+  | { id: string; type: 'circle'; center: string; through: string }
+  | { id: string; type: 'polygon'; of: string[] }
+  | { id: string; type: 'midpoint'; name: string; of: [string, string] }
+  /** Perpendicular or parallel to `to` (a segment, line or ray) through point `through`. */
+  | { id: string; type: 'perpendicular' | 'parallel'; through: string; to: string }
+  | { id: string; type: 'perpbisector'; of: [string, string] }
+  /** Bisects angle of[0]–of[1]–of[2] (vertex in the middle). */
+  | { id: string; type: 'anglebisector'; of: [string, string, string] }
+  /** Where two lines or circles cross; `which` picks one of two crossings. */
+  | { id: string; type: 'intersection'; name: string; of: [string, string]; which: 0 | 1 }
+  /** Ruler and protractor readings (hidden in practice mode). */
+  | { id: string; type: 'length'; of: [string, string] }
+  | { id: string; type: 'angle'; of: [string, string, string] };
+
+export interface ConstructionItem {
+  id: string;
+  kind: 'construction';
+  color: string;
+  hidden?: boolean;
+  objects: GeoObject[];
+}
+
+export type GraphItem = ExprItem | TableItem | NoteItem | UnitCircleItem | ConstructionItem;
 
 export interface Graph {
   id: string;
@@ -180,6 +221,12 @@ export interface Graph {
   intersections?: boolean;
   /** [xmin, ymax, xmax, ymin], JSXGraph's order. */
   bbox: [number, number, number, number];
+  /** Angles in degrees (sin x takes x in degrees); radians when unset. */
+  angles?: 'deg';
+  /** Label the x-axis in multiples of π/2 (radians) or 90° (degrees). */
+  piTicks?: boolean;
+  /** Same scale on both axes (for geometry and circles). */
+  square?: boolean;
 }
 
 export interface Notebook {
@@ -388,8 +435,11 @@ export function normalize(raw: unknown): Notebook {
         ...(typeof g.xLabel === 'string' && g.xLabel ? { xLabel: g.xLabel } : {}),
         ...(typeof g.yLabel === 'string' && g.yLabel ? { yLabel: g.yLabel } : {}),
         ...(g.intersections === false ? { intersections: false } : {}),
+        ...(g.angles === 'deg' ? { angles: 'deg' } : {}),
+        ...(g.piTicks === true ? { piTicks: true } : {}),
+        ...(g.square === true ? { square: true } : {}),
         bbox: Array.isArray(g.bbox) && g.bbox.length === 4 && g.bbox.every(Number.isFinite) ? g.bbox : [...DEFAULT_BBOX],
-        items: Array.isArray(g.items) ? g.items.filter((i: any) => i && ['expr', 'table', 'note'].includes(i.kind)) : [],
+        items: Array.isArray(g.items) ? g.items.filter((i: any) => i && ['expr', 'table', 'note', 'unitcircle', 'construction'].includes(i.kind)) : [],
       }))
     : [];
   return {

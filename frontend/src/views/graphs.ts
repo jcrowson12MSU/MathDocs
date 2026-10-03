@@ -5,10 +5,31 @@ import katex from 'katex';
 import { MathfieldElement } from 'mathlive';
 import { analyze, derivative, integrate, intersections, variableLatex, type Plottable } from '../mathfn';
 import {
-  COLORS, DEFAULT_BBOX, exprItem, newGraph, nextColor, noteItem, parseNumber, tableItem,
-  type ExprItem, type Graph, type GraphItem, type NoteItem, type Notebook, type TableItem,
+  COLORS, DEFAULT_BBOX, exprItem, newGraph, newId, nextColor, noteItem, parseNumber, tableItem,
+  type ConstructionItem, type ExprItem, type Graph, type GraphItem, type NoteItem, type Notebook, type TableItem,
+  type UnitCircleItem,
 } from '../model';
 import { debounce, h } from '../ui';
+import { ConstructionState, constructionRow, drawConstruction, handleBoardClick, type DrawResult } from './geometry';
+import { drawUnitCircle } from './unitcircle';
+
+/** Parent functions the student can draw faintly behind a transformed one. */
+const PARENTS: [string, string][] = [
+  ['x', 'y = x'], ['x^2', 'y = x²'], ['x^3', 'y = x³'], ['\\left|x\\right|', 'y = |x|'], ['\\sqrt{x}', 'y = √x'],
+  ['\\sqrt[3]{x}', 'y = ∛x'], ['\\frac{1}{x}', 'y = 1/x'], ['2^x', 'y = 2ˣ'], ['e^x', 'y = eˣ'], ['\\ln x', 'y = ln x'],
+  ['\\sin x', 'y = sin x'], ['\\cos x', 'y = cos x'], ['\\tan x', 'y = tan x'],
+];
+
+/** x-axis label in multiples of π/2 (or 90°). */
+function piLabel(value: number, degrees: boolean): string {
+  if (degrees) return `${Math.round(value)}°`;
+  const k = Math.round(value / (Math.PI / 2));
+  if (k === 0) return '0';
+  const sign = k < 0 ? '−' : '';
+  const n = Math.abs(k);
+  if (n % 2 === 0) return `${sign}${n / 2 === 1 ? '' : n / 2}π`;
+  return `${sign}${n === 1 ? '' : n}π/2`;
+}
 
 const fmt = (n: number) => (Number.isFinite(n) ? String(Math.round(n * 1000) / 1000) : 'undefined');
 const round = (n: number) => Math.round(n * 100) / 100;
@@ -102,6 +123,8 @@ class GraphCard {
     this.opts.onChange();
   }, 400);
 
+  private geo = new ConstructionState();
+  private geoDrawn: DrawResult | null = null;
   private xAxisLabel = h('div', { class: 'axis-label x' });
   private yAxisLabel = h('div', { class: 'axis-label y' });
   private axisInputs: Partial<Record<'x' | 'y', HTMLInputElement>> = {};
@@ -142,12 +165,17 @@ class GraphCard {
       h('div', { class: 'board-wrap' }, this.yAxisLabel, h('div', { class: 'board-col' }, this.boardDiv, this.xAxisLabel)),
       ro ? null : h('div', { class: 'axis-fields' }, axisInput('x'), axisInput('y'),
         this.toggle('Mark intersections', graph.intersections !== false, (on) => (graph.intersections = on ? undefined : false)),
+        this.toggle('Degrees', graph.angles === 'deg', (on) => this.setDegrees(on)),
+        this.toggle('π ticks', !!graph.piTicks, (on) => (graph.piTicks = on || undefined)),
+        this.toggle('Same scale', !!graph.square, (on) => (graph.square = on || undefined)),
         this.practiceNote),
       this.itemsEl,
       ro ? null : h('div', { class: 'graph-add' },
         h('button', { class: 'btn small', onclick: () => this.addItem(exprItem('', nextColor(graph))) }, '+ Expression'),
         h('button', { class: 'btn small', onclick: () => this.addItem(tableItem(nextColor(graph))) }, '+ Table of points'),
         h('button', { class: 'btn small', title: 'A text note you can drag anywhere on the graph', onclick: () => this.addNote() }, '+ Note'),
+        h('button', { class: 'btn small', title: 'The unit circle with a draggable angle', onclick: () => this.addUnitCircle() }, '+ Unit circle'),
+        h('button', { class: 'btn small', title: 'Points, segments, circles and constructions', onclick: () => this.addConstruction() }, '+ Construction'),
       ),
     );
     this.renderItems();
@@ -212,6 +240,33 @@ class GraphCard {
     }
   }
 
+  /** Switch between radians and degrees, keeping the same part of the x-axis in view. */
+  private setDegrees(on: boolean): void {
+    if (on === (this.graph.angles === 'deg')) return;
+    const k = on ? 180 / Math.PI : Math.PI / 180;
+    const [x1, y1, x2, y2] = this.graph.bbox;
+    this.graph.bbox = [x1 * k, y1, x2 * k, y2];
+    this.graph.angles = on ? 'deg' : undefined;
+    this.analyses.clear();
+    this.renderItems();
+  }
+
+  private addUnitCircle(): void {
+    const item: UnitCircleItem = { id: newId(), kind: 'unitcircle', color: nextColor(this.graph), angle: Math.PI / 3 };
+    this.graph.bbox = [-1.7, 1.5, 1.7, -1.5];
+    this.graph.square = true;
+    this.addItem(item);
+    this.buildBoard();
+  }
+
+  private addConstruction(): void {
+    const item: ConstructionItem = { id: newId(), kind: 'construction', color: nextColor(this.graph), objects: [] };
+    this.graph.square = true;
+    this.geo.tool = 'point';
+    this.addItem(item);
+    this.buildBoard();
+  }
+
   private addNote(): void {
     const [x1, y1, x2, y2] = this.board?.getBoundingBox() ?? this.graph.bbox;
     this.addItem(noteItem([round((x1 + x2) / 2), round((y1 + y2) / 2)]));
@@ -220,7 +275,7 @@ class GraphCard {
   private analysis(item: ExprItem): Plottable {
     let a = this.analyses.get(item.id);
     if (!a) {
-      a = analyze(item.latex);
+      a = analyze(item.latex, { degrees: this.graph.angles === 'deg' });
       this.analyses.set(item.id, a);
     }
     return a;
@@ -257,7 +312,15 @@ class GraphCard {
   private renderItems(): void {
     this.itemsEl.replaceChildren(
       ...this.graph.items.map((item) =>
-        item.kind === 'expr' ? this.exprRow(item) : item.kind === 'table' ? this.tableRow(item) : this.noteRow(item),
+        item.kind === 'expr' ? this.exprRow(item)
+        : item.kind === 'table' ? this.tableRow(item)
+        : item.kind === 'unitcircle' ? this.unitCircleRow(item)
+        : item.kind === 'construction' ? constructionRow(item, this.geo, {
+            readOnly: this.opts.readOnly,
+            onChange: () => this.opts.onChange(),
+            redraw: () => this.buildBoard(),
+          }, this.commonButtons(item))
+        : this.noteRow(item),
       ),
     );
   }
@@ -301,7 +364,7 @@ class GraphCard {
       const a = this.analysis(item);
       msg.textContent = a.kind === 'error' ? a.message : '';
       // Sliders for parameters like a, b in y = ax + b.
-      const names = a.kind === 'function' || a.kind === 'implicit' || a.kind === 'points' || a.kind === 'region' ? a.params : [];
+      const names = 'params' in a ? a.params : [];
       item.params ??= {};
       for (const n of names) item.params[n] ??= 1;
       params.replaceChildren(...names.map((n) => this.slider(item, n)));
@@ -313,6 +376,7 @@ class GraphCard {
           this.toggle('Slope triangle', item.slopeTriangle != null, (on) => (item.slopeTriangle = on ? { x1: 0, x2: 1 } : null)),
           this.toggle('Tangent line', item.tangentAt != null, (on) => (item.tangentAt = on ? 1 : null)),
           this.toggle('Area under curve', item.area != null, (on) => (item.area = on ? { from: 0, to: 2 } : null)),
+          this.parentSelect(item),
         );
       }
     };
@@ -331,6 +395,18 @@ class GraphCard {
     );
   }
 
+  /** Pick a parent function (y = x², y = |x| …) to draw faintly behind this one. */
+  private parentSelect(item: ExprItem): HTMLElement {
+    const select = h('select', { class: 'parent-select', title: 'Draw a parent function faintly behind this one' },
+      h('option', { value: '' }, 'Parent: none'),
+      ...PARENTS.map(([latex, label]) => h('option', { value: latex, selected: item.parent === latex }, `Parent: ${label}`)));
+    select.addEventListener('change', () => {
+      item.parent = select.value || null;
+      this.changed();
+    });
+    return h('label', { class: 'chip' }, select);
+  }
+
   /** What an expression or table represents; drawn on the graph where you drag it. */
   private labelInput(item: ExprItem | TableItem, placeholder: string): HTMLElement | null {
     if (this.opts.readOnly) return null;
@@ -340,6 +416,13 @@ class GraphCard {
       this.changed();
     });
     return input;
+  }
+
+  private unitCircleRow(item: UnitCircleItem): HTMLElement {
+    const [swatch, ...buttons] = this.commonButtons(item);
+    return h('div', { class: 'graph-item', 'data-item': item.id },
+      h('div', { class: 'item-line' }, swatch, h('span', { class: 'geo-title' }, 'Unit circle'), ...buttons),
+      h('div', { class: 'muted small' }, 'Drag the point around the circle; it stops every 15°. Its coordinates are (?, ?) — that part is yours.'));
   }
 
   private noteRow(item: NoteItem): HTMLElement {
@@ -475,7 +558,17 @@ class GraphCard {
       boundingbox: this.graph.bbox,
       axis: true,
       grid: true,
-      keepAspectRatio: false,
+      keepAspectRatio: !!this.graph.square,
+      ...(this.graph.piTicks ? {
+        defaultAxes: {
+          x: {
+            ticks: {
+              insertTicks: false, ticksDistance: this.graph.angles === 'deg' ? 90 : Math.PI / 2, minorTicks: 1,
+              generateLabelText: (tick: any, zero: any) => piLabel(tick.usrCoords[1] - zero.usrCoords[1], this.graph.angles === 'deg'),
+            },
+          },
+        },
+      } : {}),
       showCopyright: false,
       showNavigation: true,
       pan: { enabled: true, needShift: false, needTwoFingers: true },
@@ -489,7 +582,13 @@ class GraphCard {
       if (item.hidden) continue;
       if (item.kind === 'expr') this.drawExpr(board, item, syncers);
       else if (item.kind === 'table') this.drawTable(board, item, syncers);
-      else this.drawNote(board, item, syncers);
+      else if (item.kind === 'unitcircle') drawUnitCircle(board, item, { readOnly: this.opts.readOnly, degrees: this.graph.angles === 'deg' }, syncers);
+      else if (item.kind === 'construction') {
+        this.geoDrawn = drawConstruction(board, item, {
+          readOnly: this.opts.readOnly, practice: this.opts.practice?.() ?? false, picked: this.geo.picked,
+        }, syncers);
+        this.wireConstruction(board, item);
+      } else this.drawNote(board, item, syncers);
     }
 
     this.crossings = [];
@@ -583,6 +682,27 @@ class GraphCard {
       (p) => (item.labelPos = p), () => item.labelPos);
   }
 
+  /** Clicks on the board with a construction tool chosen build the construction. */
+  private wireConstruction(board: any, item: ConstructionItem): void {
+    if (this.opts.readOnly) return;
+    let down: [number, number] | null = null;
+    board.on('down', (e: PointerEvent) => (down = [e.clientX, e.clientY]));
+    board.on('up', (e: PointerEvent) => {
+      if (!down || this.geo.tool === 'move' || !this.geoDrawn) return;
+      const moved = Math.hypot(e.clientX - down[0], e.clientY - down[1]);
+      down = null;
+      if (moved > 5) return;
+      if (handleBoardClick(board, e, item, this.geo, this.geoDrawn)) {
+        this.opts.onChange();
+        // Redraw after JSXGraph finishes handling this click.
+        setTimeout(() => {
+          this.buildBoard();
+          this.geo.hintEl?.dispatchEvent(new Event('refresh'));
+        });
+      }
+    });
+  }
+
   private drawNote(board: any, item: NoteItem, syncers: (() => boolean)[]): void {
     if (!item.text.trim()) return;
     this.draggableText(board, item.text, item.pos, item.color, syncers, (p) => (item.pos = p), () => item.pos, false);
@@ -656,11 +776,46 @@ class GraphCard {
       this.drawItemLabel(board, item, () => [x1 + (x2 - x1) * 0.6, y1 - (y1 - y2) * 0.12], syncers);
       return;
     }
+    if (a.kind === 'polar' || a.kind === 'parametric') {
+      const p = () => item.params ?? {};
+      const k = a.kind === 'polar' && this.graph.angles === 'deg' ? Math.PI / 180 : 1;
+      const X = a.kind === 'polar' ? (t: number) => a.f(t, p()) * Math.cos(t * k) : (t: number) => a.x(t, p());
+      const Y = a.kind === 'polar' ? (t: number) => a.f(t, p()) * Math.sin(t * k) : (t: number) => a.y(t, p());
+      board.create('curve', [X, Y, a.from, a.to], { strokeColor: color, strokeWidth: 2.5, highlight: false, numberPointsHigh: 1600 });
+      const mid = (a.from + a.to) / 3;
+      this.drawItemLabel(board, item, () => [X(mid), Y(mid)], syncers);
+      return;
+    }
     if (a.kind !== 'function') return;
 
     const f = (x: number) => a.f(x, item.params ?? {});
+    if (item.parent) {
+      const parent = analyze(`y=${item.parent}`, { degrees: this.graph.angles === 'deg' });
+      if (parent.kind === 'function') {
+        board.create('functiongraph', [(x: number) => parent.f(x, {})], { strokeColor: '#adb5bd', strokeWidth: 2, dash: 1, highlight: false });
+      }
+    }
     this.drawItemLabel(board, item, () => this.spotOnCurve(board, f), syncers);
     const curve = board.create('functiongraph', [f], { strokeColor: color, strokeWidth: 2.5, highlight: false });
+    // Ends of a restricted domain: a filled dot if the end is included, an open one if not.
+    for (const i of a.domain ?? []) {
+      for (const [end, closed, inward] of [[i.from, i.fromClosed, 1], [i.to, i.toClosed, -1]] as const) {
+        if (!Number.isFinite(end)) continue;
+        const near = (q: number) => a.f(end + inward * q * Math.max(1, Math.abs(end)), item.params ?? {});
+        const y = () => (closed ? f(end) : near(1e-9));
+        board.create('point', [end, y], {
+          name: '', size: 4, fixed: true, highlight: false, showInfobox: false, withLabel: false,
+          fillColor: closed ? color : '#ffffff', strokeColor: color, strokeWidth: 2,
+        });
+      }
+    }
+    // Holes: where the expression is undefined but the graph continues on both sides.
+    for (const [hx, hy] of a.holes ?? []) {
+      board.create('point', [hx, hy], {
+        name: '', size: 4, fixed: true, highlight: false, showInfobox: false, withLabel: false,
+        fillColor: '#ffffff', strokeColor: color, strokeWidth: 2,
+      });
+    }
 
     if (item.showDerivative) {
       board.create('functiongraph', [derivative(f)], { strokeColor: color, strokeWidth: 1.5, dash: 2, highlight: false });
