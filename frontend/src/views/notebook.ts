@@ -46,7 +46,8 @@ const LOCAL_APP = 'http://127.0.0.1:8642/';
 interface CellView {
   cell: Cell;
   el: HTMLElement;
-  focus(where: 'start' | 'end'): void;
+  /** `edit`: a text cell opens for editing (only asked for when a new, empty text cell is added). */
+  focus(where: 'start' | 'end', edit?: boolean): void;
   numberEl: HTMLElement;
   setCommentsOpen(open: boolean): void;
   /** Show the previous step in gray as a starting point (math cells only). */
@@ -55,7 +56,7 @@ interface CellView {
 
 interface CellEditor {
   el: HTMLElement;
-  focus(where: 'start' | 'end'): void;
+  focus(where: 'start' | 'end', edit?: boolean): void;
   suggest?(latex: string): void;
   /** Open the work row under a math step. */
   openWork?(): void;
@@ -335,11 +336,11 @@ export class NotebookView {
     return this.nb.cells.findIndex((c) => c.id === id);
   }
 
-  private focusAt(i: number, where: 'start' | 'end'): boolean {
+  private focusAt(i: number, where: 'start' | 'end', edit = false): boolean {
     const cell = this.nb.cells[i];
     if (!cell) return false;
     this.reveal(i);
-    this.views.get(cell.id)?.focus(where);
+    this.views.get(cell.id)?.focus(where, edit);
     return true;
   }
 
@@ -511,7 +512,8 @@ export class NotebookView {
     this.renumber();
     this.applyCollapse();
     this.changed();
-    if (focus) this.focusAt(at, 'start');
+    // A new text cell opens ready to type; other text cells only open for editing on a double-click.
+    if (focus) this.focusAt(at, 'start', true);
   }
 
   private deleteCell(id: string, focusPrev = true): void {
@@ -1074,7 +1076,7 @@ export class NotebookView {
     const renderView = () => {
       view.innerHTML = cell.text.trim()
         ? renderMarkdown(cell.text, { folder: this.folder() })
-        : `<p class="muted">${this.readOnly ? '' : 'Empty text — click to write notes'}</p>`;
+        : `<p class="muted">${this.readOnly ? '' : 'Empty text — double-click to write notes'}</p>`;
       this.markLinks(view);
     };
     const autosize = () => {
@@ -1094,12 +1096,20 @@ export class NotebookView {
       }
     };
 
+    // A single click selects the text (and follows links); a double-click opens it for editing.
     view.addEventListener('click', (e) => {
       const link = (e.target as HTMLElement).closest<HTMLAnchorElement>('a.notebook-link');
       if (link) return this.followLink(link, e);
       if ((e.target as HTMLElement).closest('a')) return;
+      if (document.activeElement !== view) view.focus({ preventScroll: true });
+    });
+    view.addEventListener('dblclick', (e) => {
+      if ((e.target as HTMLElement).closest('a') || this.readOnly) return;
+      e.preventDefault();
+      window.getSelection()?.removeAllRanges();
       setEditing(true);
       area.focus();
+      area.setSelectionRange(area.value.length, area.value.length);
     });
     view.addEventListener('keydown', (e) => {
       if (this.cellKeys(e, cell)) {
@@ -1153,8 +1163,10 @@ export class NotebookView {
     renderView();
     return {
       el: view as HTMLElement,
-      focus: (where: 'start' | 'end') => {
-        if (this.readOnly) {
+      focus: (where: 'start' | 'end', edit = false) => {
+        // Moving onto a text cell (arrows, opening a notebook) selects it; it opens for editing only when
+        // asked — a double-click, Enter, or a brand-new empty cell.
+        if (this.readOnly || (!editing && !(edit && !cell.text.trim()))) {
           view.focus();
           return;
         }
