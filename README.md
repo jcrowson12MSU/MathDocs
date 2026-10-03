@@ -137,6 +137,27 @@ show their numbers. Turn it off to check the work.
 
 Empty exponent or subscript boxes (`x_{}`) are removed when you leave a step.
 
+### Layouts (Algebra II and geometry)
+
+**+ Layout ▾** between steps (or **Add layout below…** in the ⋯ menu) adds a layout drawn the way it's done on
+paper. The boxes are filled in by hand; nothing in them is computed. ↑ ↓ ← → move between boxes and **Enter**
+goes to the next one.
+
+- **Box (area model)**: terms across the top and down the side, products inside. For multiplying polynomials
+  and for factoring. **+ row** / **+ column** add terms.
+- **X (factoring diamond)**: what the two numbers multiply to (top) and add to (bottom), the numbers left and right.
+- **Synthetic division**: the zero of the divisor in the corner, the coefficients across, then the middle and
+  bottom rows.
+- **Long division**: divisor ) dividend with the quotient on top, then work lines (every other line has a rule
+  under it for subtracting). **⌥←** / **⌥→** shift a line to line up like terms; Enter on the last line adds one.
+- **Matrix (row operations)**: type the entries; a bar before the last column makes it augmented. Write a row
+  operation in the red note beside a row — `R_2-3R_1`, `R_1<->R_2` (swap), `1/2 R_1` — and press **Enter**: the
+  next matrix appears below with the operations applied in gray (**→** accepts a row). The operations are your
+  choice; the app only does the arithmetic. In practice mode the next matrix is a plain copy.
+- **Two-column proof**: Given, Prove, then numbered **Statements | Reasons**. Statements are math
+  (`\angle`, `\cong`, `\triangle`, `\overline{AB}`, `\parallel`, `\perp`); reasons are plain text. Enter on the
+  last reason adds a row.
+
 ### Number lines
 
 Choose **Show number line** in a step's ⋯ menu to draw the step's inequality (or equation) in one letter
@@ -189,6 +210,24 @@ Choose **Graph this step** in a step's ⋯ menu, or open **📈 Graphs → + Add
 - **Intersections**: where two lines or curves (`y = …`, or vertical lines like `x = 3`) cross, the point is
   marked with its coordinates, e.g. **(18, 70)**. Markers follow the view as you pan and zoom. Turn them off
   with **Mark intersections** under the graph (practice mode hides them too). (Circles and tables of points aren't included yet.)
+- **Restrictions and piecewise functions**: put the domain in braces after the expression,
+  `y = x^2 {x < 2}` or `y = 6 − x {2 ≤ x ≤ 5}`. The ends get a filled dot if they're included and an open dot
+  if not. A piecewise function is several restricted expressions.
+- **Holes**: where an expression is undefined but the graph continues on both sides — `(x² − 4)/(x − 2)` at
+  x = 2 — an open circle is drawn. Asymptotes aren't drawn for you.
+- **Parent function**: under a `y = …` expression, choose **Parent: y = x²** (or |x|, √x, 1/x, 2ˣ, sin x …) to draw
+  it faintly behind the transformed one.
+- **Polar and parametric curves**: `r = 2\cos\theta` (θ from 0 to 2π) and `(3\cos t, 2\sin t)`. A range in
+  braces sets how far they go: `r = \theta {0 ≤ θ ≤ 4π}`, `(t, t^2) {−1 ≤ t ≤ 1}`.
+- **Degrees / π ticks / Same scale** (under each graph): **Degrees** makes `sin x` take x in degrees (and the
+  x-axis follows); **π ticks** labels the x-axis π/2, π, 3π/2 … (or 90°, 180° …); **Same scale** keeps circles round.
+- **+ Unit circle**: a point you drag around the unit circle (it stops every 15°), its terminal side, the reference
+  triangle and the angle (θ = π/3, or 60° in degrees). The point's coordinates are left as **(?, ?)** to work out.
+- **+ Construction** (geometry): tools for **Point, Segment, Line, Ray, Circle** (compass: center, then a point on
+  it), **Polygon**, **Midpoint**, **Perpendicular**, **Parallel**, **⊥ Bisector**, **∠ Bisector** and **Intersect**,
+  plus a **Ruler** and **Protractor**. Click points (or empty spots, which make new points A, B, C …); dragging a
+  point moves everything built from it. **Undo last** removes the last thing added. Practice mode hides the ruler
+  and protractor readings.
 - **Slope triangle** for `y = f(x)`: two dots on the line (drag them; they land on whole-number x) with the
   run and rise drawn between them, e.g. **run = 2**, **rise = 4**. It never shows the slope itself.
 - **Calculus tools** for `y = f(x)`: derivative curve, a draggable tangent line that shows its slope, and

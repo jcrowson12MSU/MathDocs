@@ -583,7 +583,7 @@ body.printing .graph-panel { width: 6in !important; flex: none !important; }
   .layout-tools, .ld-shift { display: none !important; }
 }
 .layout-field.is-empty, .matrix-entry.is-empty, .proof-statement.is-empty { border-color: var(--line); }
-.area-cell .layout-field.is-empty, .synth-cell .layout-field.is-empty, .ld-row .layout-field.is-empty { border-color: transparent; }
+.area-cell:not(.head) .layout-field.is-empty, .synth-cell .layout-field.is-empty, .ld-row .layout-field.is-empty { border-color: transparent; }
 .layout-box:hover .area-cell .layout-field.is-empty, .layout-box:hover .synth-cell .layout-field.is-empty { border-color: var(--line); }
 
 /* Geometry construction palette, unit circle row, parent select */

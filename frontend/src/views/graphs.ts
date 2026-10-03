@@ -805,7 +805,7 @@ class GraphCard {
         const y = () => (closed ? f(end) : near(1e-9));
         board.create('point', [end, y], {
           name: '', size: 4, fixed: true, highlight: false, showInfobox: false, withLabel: false,
-          fillColor: closed ? color : '#ffffff', strokeColor: color, strokeWidth: 2,
+          fillColor: closed ? color : '#ffffff', strokeColor: color, strokeWidth: 2, layer: closed ? 10 : 9,
         });
       }
     }
