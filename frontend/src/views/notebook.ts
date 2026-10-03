@@ -16,7 +16,7 @@ import { folderHash, folderOf } from '../routes';
 import { GraphPanel } from './graphs';
 import { focusable } from './mathfield';
 import { WorkRow, hasRelation, leftSideEnd } from './workrow';
-import { systemEditor } from './system';
+import { nextSystemRows, setSystemSuggestions, systemEditor } from './system';
 import { solutionSet } from '../inequality';
 import { renderNumberLine } from './numberline';
 
@@ -51,6 +51,8 @@ interface CellEditor {
   openWork?(): void;
   /** Show or hide the number line under a math step. */
   toggleNumberLine?(): void;
+  /** In a system: make the next system with multiplied / distributed rows suggested. */
+  continueSystem?(): boolean;
 }
 
 export class NotebookView {
@@ -446,6 +448,12 @@ export class NotebookView {
             return true;
           },
           next: () => this.nextStep(cell.id, false),
+          continueBelow: (rows, combine) => {
+            const next = systemCell(rows.map((r) => r.latex));
+            next.combine = combine;
+            setSystemSuggestions(next, rows.map((r) => r.suggestion));
+            this.insertCell(this.index(cell.id) + 1, next);
+          },
         })
       : this.dividerEditor(cell, el);
 
@@ -490,6 +498,9 @@ export class NotebookView {
                 this.graphs.addExpression(cell.latex);
               },
             }
+          : null,
+        cell.type === 'system' && edit && nextSystemRows(cell)
+          ? { label: '↓  Next system (multiply / distribute)', hint: '↵ in a note', run: () => content.continueSystem?.() }
           : null,
         cell.type === 'system' && edit && cell.rows.some((r) => r.latex.trim())
           ? {

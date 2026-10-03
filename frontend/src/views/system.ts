@@ -1,8 +1,13 @@
 // The "System" cell: equations stacked for elimination, with their = signs lined up, a note beside
 // each row (×3), a + or − on the last row, a line, and the combined equation under it.
-// It is layout only: nothing here combines equations; the student writes every part.
+// It never combines equations; the student writes the combined equation under the line.
+//
+// To help with the multiply-to-match step, a row note like ×3 carries into the next system:
+// first as 3(2x − y) = 3·5, then distributed as 6x − 3y = 15, each a gray suggestion
+// (accept with →). The student still chooses the multiplier.
 
 import { MathfieldElement } from 'mathlive';
+import { distributeRow, multiplierOf, multiplyRow } from '../mathfn';
 import type { SystemCell } from '../model';
 import { h } from '../ui';
 import { focusable, type Where } from './mathfield';
@@ -16,6 +21,31 @@ export interface SystemEditorContext {
   leave: (dir: -1 | 1) => boolean;
   /** Enter under the line: go on to the next step. */
   next: () => void;
+  /** Add the next system below: rows with `suggestion` start empty and show it in gray. */
+  continueBelow: (rows: { latex: string; suggestion?: string }[], combine: SystemCell['combine']) => void;
+}
+
+/** Gray suggestions for a newly made system's rows (kept out of the saved notebook). */
+const pendingSuggestions = new WeakMap<SystemCell, (string | undefined)[]>();
+
+export function setSystemSuggestions(cell: SystemCell, suggestions: (string | undefined)[]): void {
+  pendingSuggestions.set(cell, suggestions);
+}
+
+/**
+ * The next system: a row with a multiplier note is written out multiplied (3(2x−y)=3·5);
+ * a multiplied row is distributed (6x−3y=15); other rows are copied. Null if nothing changes.
+ */
+export function nextSystemRows(cell: SystemCell): { latex: string; suggestion?: string }[] | null {
+  let changed = false;
+  const rows = cell.rows.map((r) => {
+    const multiplied = r.note && r.latex ? multiplyRow(r.latex, r.note) : null;
+    const next = multiplied ?? (r.latex ? distributeRow(r.latex) : null);
+    if (!next) return { latex: r.latex };
+    changed = true;
+    return { latex: '', suggestion: next };
+  });
+  return changed ? rows : null;
 }
 
 const RELATIONS = new Set(['=', '<', '>', '\\le', '\\ge', '\\leq', '\\geq', '\\ne', '\\neq', '\\lt', '\\gt']);
@@ -53,6 +83,9 @@ export function systemEditor(cell: SystemCell, ctx: SystemEditorContext) {
   // Every editable field in reading order, so ↑/↓ and Enter can move between them.
   let equations: { mf: MathfieldElement; focus: (w: Where) => void }[] = [];
   let notes: { mf: MathfieldElement; focus: (w: Where) => void }[] = [];
+  /** Gray suggestion for each row, if this system was made by carrying on from the one above. */
+  const suggestions: (string | undefined)[] = [...(pendingSuggestions.get(cell) ?? [])];
+  pendingSuggestions.delete(cell);
   const result = field(cell.result, ctx.readOnly, 'system-eq system-result-eq', '\\text{combined equation}');
   const focusResult = focusable(result);
   result.addEventListener('input', () => {
@@ -116,9 +149,26 @@ export function systemEditor(cell: SystemCell, ctx: SystemEditorContext) {
         stop();
         const dir = e.key === 'ArrowUp' ? -1 : 1;
         setTimeout(() => moveTo(index + dir, dir < 0 ? 'end' : 'start'));
+      } else if (e.key === 'ArrowRight' && plain && !isNote && !mf.value && suggestions[index] && !ctx.readOnly) {
+        // Accept the gray suggestion (like the next-step suggestions in regular steps).
+        stop();
+        const s = suggestions[index]!;
+        mf.value = s;
+        cell.rows[index].latex = s;
+        suggestions[index] = undefined;
+        mf.setAttribute('placeholder', '\\text{next equation}');
+        mf.position = mf.lastOffset;
+        align();
+        ctx.onChange();
       } else if (e.key === 'Enter' && !e.metaKey && !e.ctrlKey && !e.altKey && mf.mode !== 'latex' && !ctx.readOnly) {
         stop();
-        if (index === cell.rows.length) ctx.next();
+        // After writing a multiplier note (×3), or on an empty line under the system:
+        // carry on with the next system (multiplied, then distributed) if there's anything to do.
+        const atResult = index === cell.rows.length;
+        if ((isNote && multiplierOf(mf.value)) || (atResult && !result.value.trim())) {
+          if (continueSystem()) return;
+        }
+        if (atResult) ctx.next();
         else setTimeout(() => moveTo(index + 1, 'start'));
       } else if (e.key === 'Backspace' && !mf.value && plain && !ctx.readOnly) {
         stop();
@@ -155,7 +205,8 @@ export function systemEditor(cell: SystemCell, ctx: SystemEditorContext) {
     grid.replaceChildren();
     cell.rows.forEach((row, i) => {
       const note = field(row.note ?? '', ctx.readOnly, 'system-note', '');
-      const eq = field(row.latex, ctx.readOnly, 'system-eq', i === 0 ? '\\text{first equation}' : '\\text{next equation}');
+      const suggestion = !row.latex ? suggestions[i] : undefined;
+      const eq = field(row.latex, ctx.readOnly, 'system-eq', suggestion ?? (i === 0 ? '\\text{first equation}' : '\\text{next equation}'));
       note.addEventListener('input', () => {
         if (note.value.trim()) row.note = note.value;
         else delete row.note;
@@ -163,6 +214,11 @@ export function systemEditor(cell: SystemCell, ctx: SystemEditorContext) {
       });
       eq.addEventListener('input', () => {
         row.latex = eq.value;
+        // Typing your own equation replaces the suggestion.
+        if (suggestions[i] && eq.value) {
+          suggestions[i] = undefined;
+          eq.setAttribute('placeholder', '\\text{next equation}');
+        }
         align();
         ctx.onChange();
       });
@@ -189,6 +245,14 @@ export function systemEditor(cell: SystemCell, ctx: SystemEditorContext) {
     }
     align();
   };
+  /** Make the next system below (multiplied or distributed rows as suggestions). False if nothing changes. */
+  function continueSystem(): boolean {
+    const rows = nextSystemRows(cell);
+    if (!rows) return false;
+    ctx.continueBelow(rows, cell.combine);
+    return true;
+  }
+
   keys(result, () => cell.rows.length, false);
   build();
   new ResizeObserver(() => align()).observe(box);
@@ -197,9 +261,12 @@ export function systemEditor(cell: SystemCell, ctx: SystemEditorContext) {
   return {
     el: box,
     focus: (where: 'start' | 'end') => {
-      if (where === 'start') equations[0]?.focus('start');
+      // A new system starts at its first suggested row (the one to accept or rewrite).
+      const suggested = suggestions.findIndex((s, i) => s && !cell.rows[i]?.latex);
+      if (where === 'start') equations[Math.max(0, suggested)]?.focus('start');
       else if (cell.result || !cell.rows.some((r) => r.latex)) focusResult('end');
       else equations[cell.rows.length - 1].focus('end');
     },
+    continueSystem,
   };
 }

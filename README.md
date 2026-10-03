@@ -105,9 +105,15 @@ by a negative number flips it.
 
 Type each equation (their = signs line up), press **←** at the start of a row to write a note like `×3`
 beside it, click the **+** to switch it to **−**, and write the combined equation under the line.
-**Enter** moves down the rows and from under the line to the next step. It's only a layout: the app
-never combines the equations for you. **Graph these equations** in the ⋯ menu graphs them, and the
-crossing point is marked.
+**Enter** moves down the rows and from under the line to the next step. The app never combines the
+equations for you. **Graph these equations** in the ⋯ menu graphs them, and the crossing point is marked.
+
+**Multiplying an equation so a variable cancels.** Write the multiplier as the row's note (e.g. `×3`
+beside `2x − y = 5`) and press **Enter**. A new system appears below with that row written out in gray as
+`3(2x − y) = 3·5`; press **→** to accept it. Press **Enter** on the empty line under it and the next system
+suggests the distributed row, `6x − 3y = 15`. Now the y terms are `+3y` and `−3y`, so write the combined
+equation (`10x = 40`) under the line yourself. Unchanged rows are copied along. You can always type your
+own row instead of accepting a suggestion.
 
 ### Number lines
 

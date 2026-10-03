@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { analyze, applyOperation, derivative, integrate, intersections, mixedNumbers, splitRelation, variableLatex } from './mathfn';
+import { analyze, applyOperation, derivative, distributeRow, integrate, intersections, mixedNumbers, multiplierOf, multiplyRow, splitRelation, variableLatex } from './mathfn';
 import { mathCell, mergeComments, type MathCell, newNotebook, normalize, parseNumber } from './model';
 import { decodeNotebook, encodeNotebook, shareLink } from './share';
 import { solutionSet, yRegion } from './inequality';
@@ -266,6 +266,33 @@ describe('inequalities', () => {
     expect(yRegion('y\\ge x^2')).toMatchObject({ shade: 'above', inclusive: true });
     expect(yRegion('2x+1>y')).toMatchObject({ shade: 'below', inclusive: false });
     expect(yRegion('x^2+y^2<25')).toBeNull();
+  });
+});
+
+describe('multiplying a row of a system', () => {
+  it('reads the multiplier from a note', () => {
+    expect(multiplierOf('\\times3')).toBe('3');
+    expect(multiplierOf('×3')).toBe('3');
+    expect(multiplierOf('\\cdot\\left(-2\\right)')).toBe('-2');
+    expect(multiplierOf('\\times\\frac12')).toBe('\\frac12');
+    expect(multiplierOf('add')).toBeNull();
+    expect(multiplierOf('\\times x')).toBeNull(); // only numbers
+    expect(multiplierOf('\\times0')).toBeNull();
+  });
+
+  it('writes out multiplying both sides, like the student did', () => {
+    expect(multiplyRow('2x-y=5', '\\times3')).toBe('3\\left(2x-y\\right)=3\\cdot5');
+    expect(multiplyRow('x-y=2', '\\times2')).toBe('2\\left(x-y\\right)=2\\cdot2');
+    expect(multiplyRow('3x+2y=-4', '\\times\\left(-2\\right)')).toBe('\\left(-2\\right)\\left(3x+2y\\right)=\\left(-2\\right)\\cdot\\left(-4\\right)');
+    expect(multiplyRow('2x-y=5', 'check')).toBeNull();
+  });
+
+  it('distributes, keeping x before y', () => {
+    expect(distributeRow('3\\left(2x-y\\right)=3\\cdot5')).toBe('6x-3y=15');
+    expect(distributeRow('2\\left(x-y\\right)=2\\cdot2')).toBe('2x-2y=4');
+    expect(distributeRow('\\left(-2\\right)\\left(3x+2y\\right)=\\left(-2\\right)\\cdot\\left(-4\\right)')).toBe('-6x-4y=8');
+    expect(distributeRow('-3\\left(-y+2x\\right)=6')).toBe('-6x+3y=6');
+    expect(distributeRow('4x+3y=25')).toBeNull(); // nothing to do
   });
 });
 

@@ -172,6 +172,73 @@ const FLIPPED: Record<string, string> = {
 };
 
 
+// ---- multiplying an equation in a system (elimination) ------------------------------------
+
+/**
+ * The number a row note multiplies by: "\times3", "×3", "\cdot\left(-2\right)", "3" → "3" / "-2".
+ * Null unless it's a nonzero number (we only set up and distribute multiplications the student chose).
+ */
+export function multiplierOf(note: string): string | null {
+  let t = note.trim().replace(/^(\\times|\\cdot|×|\*|·)\s*/, '').trim();
+  const paren = /^\\left\((.*)\\right\)$/.exec(t) ?? /^\((.*)\)$/.exec(t);
+  if (paren) t = paren[1].trim();
+  if (!t) return null;
+  const json = ce.parse(mixedNumbers(t)).json;
+  if (hasErrors(json) || [...symbolsIn(json)].some((s) => /^[a-zA-Z]/.test(s) && !['Pi', 'ExponentialE'].includes(s))) return null;
+  const value = ce.box(json).N().valueOf();
+  return typeof value === 'number' && Number.isFinite(value) && value !== 0 ? t : null;
+}
+
+/** Does a side have more than one term at the top level (so it needs brackets when multiplied)? */
+function isSum(latex: string): boolean {
+  const json = ce.parse(mixedNumbers(latex)).json;
+  return Array.isArray(json) && (json[0] === 'Add' || json[0] === 'Subtract');
+}
+
+/**
+ * Write out multiplying both sides of a row by its note, the way it's done on paper:
+ * "2x-y=5" with "×3" → "3\left(2x-y\right)=3\cdot5".
+ */
+export function multiplyRow(row: string, note: string): string | null {
+  const k = multiplierOf(note);
+  const sides = splitRelation(row);
+  if (!k || !sides || sides[1] !== '=') return null;
+  const factor = k.startsWith('-') ? `\\left(${k}\\right)` : k;
+  const [left, , right] = sides;
+  const rhs = isSum(right) ? `\\left(${right}\\right)` : right.startsWith('-') ? `\\left(${right}\\right)` : right;
+  return `${factor}\\left(${left}\\right)=${factor}\\cdot${rhs}`;
+}
+
+/** Expand a side, keeping x terms before y terms (and numbers last), like the other rows of the system. */
+function distributeSide(latex: string): string {
+  const expanded = ce.box(['Expand', ce.parse(mixedNumbers(latex)).json]).evaluate();
+  const json: Json = expanded.json;
+  if (!Array.isArray(json) || json[0] !== 'Add') return expanded.latex;
+  const firstLetter = (t: Json) => /"([a-zA-Z][a-zA-Z_0-9]*)"/.exec(JSON.stringify(t))?.[1] ?? '~';
+  const terms = json.slice(1).sort((a: Json, b: Json) => firstLetter(a).localeCompare(firstLetter(b)));
+  return terms
+    .map((t: Json, i: number) => {
+      const s = ce.box(t).latex;
+      return i === 0 || s.startsWith('-') ? s : `+${s}`;
+    })
+    .join('');
+}
+
+/**
+ * Distribute and simplify a multiplied row: "3\left(2x-y\right)=3\cdot5" → "6x-3y=15".
+ * Null when there's nothing to distribute (the row is already simplified).
+ */
+export function distributeRow(row: string): string | null {
+  const sides = splitRelation(row);
+  if (!sides || sides[1] !== '=') return null;
+  const json = ce.parse(mixedNumbers(row)).json;
+  if (hasErrors(json)) return null;
+  const [left, , right] = sides;
+  const out = `${distributeSide(left)}=${distributeSide(right)}`;
+  const plain = (s: string) => s.replace(/\s+/g, '');
+  return plain(out) === plain(row) ? null : out;
+}
+
 /** Split a step at its one top-level relation: "2x+3=5x-8" → ["2x+3", "=", "5x-8"]. */
 export function splitRelation(latex: string): [string, string, string] | null {
   let depth = 0;
